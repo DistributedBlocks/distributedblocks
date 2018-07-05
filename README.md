@@ -66,19 +66,6 @@ cd $GOPATH/src/distributedblocks
 make ARGS="--launch-browser=false" run
 ```
 
-### Docker image
-
-```
-$ docker volume create skycoin-data
-$ docker volume create skycoin-wallet
-$ docker run -ti --rm \
-    -v skycoin-data:/data \
-    -v skycoin-wallet:/wallet \
-    -p 6000:6000 \
-    -p 6420:6420 \
-    -p 6430:6430 \
-    skycoin/skycoin
-```
 
 Access the dashboard: [http://localhost:9620](http://localhost:9620).
 
@@ -98,11 +85,7 @@ Access the API: [http://localhost:9620/version](http://localhost:9620/version).
 
 [CLI command API](cmd/cli/README.md).
 
-## Contributing a node to the network
 
-Add your node's ip:port to the [peers.txt](./peers.txt) file.
-This file will be periodically uploaded to https://downloads.skycoin.net/blockchain/peers.txt
-and used to seed client with peers.
 
 ## Development
 
