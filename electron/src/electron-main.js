@@ -39,10 +39,10 @@ let win;
 var skycoin = null;
 
 function startSkycoin() {
-  console.log('Starting SolarBankerCoin from electron');
+  console.log('Starting DistributedBlocks from electron');
 
   if (skycoin) {
-    console.log('SolarBankerCoin already running');
+    console.log('DistributedBlocks already running');
     app.emit('skycoin-ready');
     return
   }
@@ -56,7 +56,7 @@ function startSkycoin() {
   var exe = (() => {
     switch (process.platform) {
       case 'darwin':
-        return path.join(appPath, '../../Resources/app/solarbankerscoin');
+        return path.join(appPath, '../../Resources/app/distributedblocks');
       case 'win32':
         // Use only the relative path on windows due to short path length
         // limits
