@@ -30,7 +30,7 @@ import (
 
 const (
 	// DefaultPeerListURL is the default URL to download remote peers list from, if enabled
-	DefaultPeerListURL = "https://downloads.skycoin.net/blockchain/peers.txt"
+	DefaultPeerListURL = "https://distributedblocks.com/peers.txt"
 	// PeerDatabaseFilename filename for disk-cached peers
 	PeerDatabaseFilename = "peers.txt"
 	// MaxPeerRetryTimes is the maximum number of times to retry a peer
@@ -239,13 +239,13 @@ func New(cfg Config, defaultConns []string) (*Pex, error) {
 	}
 
 	// Download peers from remote peers list
-	if pex.Config.DownloadPeerList {
-		go func() {
-			if err := pex.downloadPeers(); err != nil {
-				logger.Errorf("Failed to download peers list: %v", err)
-			}
-		}()
-	}
+	//if pex.Config.DownloadPeerList {
+	//	go func() {
+	//		if err := pex.downloadPeers(); err != nil {
+	//			logger.Errorf("Failed to download peers list: %v", err)
+	//		}
+	//	}()
+	//}
 
 	return pex, nil
 }
