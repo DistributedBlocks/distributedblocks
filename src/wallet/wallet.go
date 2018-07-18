@@ -98,7 +98,7 @@ const (
 	WalletTimestampFormat = "2006_01_02"
 
 	// CoinTypeSkycoin skycoin type
-	CoinTypeSkycoin CoinType = "solarbankerscoin"
+	CoinTypeSkycoin CoinType = "distributedblocks"
 	// CoinTypeBitcoin bitcoin type
 	CoinTypeBitcoin CoinType = "bitcoin"
 )
