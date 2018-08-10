@@ -1,11 +1,11 @@
 import { Component, EventEmitter, Input, Output, ViewChild } from '@angular/core';
-import { parseResponseMessage } from '../../../utils/errors';
+import { parseResponseMessage } from '../../../utils/index';
 import { MatTooltip } from '@angular/material';
 
 @Component({
   selector: 'app-button',
   templateUrl: 'button.component.html',
-  styleUrls: ['button.component.scss'],
+  styleUrls: ['button.component.scss']
 })
 export class ButtonComponent {
   @Input() disabled: any;
@@ -46,10 +46,6 @@ export class ButtonComponent {
     this.disabled = true;
   }
 
-  setEnabled() {
-    this.disabled = false;
-  }
-
   isLoading() {
     return this.state === 0;
   }
@@ -57,7 +53,5 @@ export class ButtonComponent {
   resetState() {
     this.state = null;
     this.error = '';
-
-    return this;
   }
 }

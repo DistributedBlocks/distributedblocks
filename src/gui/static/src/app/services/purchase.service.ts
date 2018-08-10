@@ -9,6 +9,7 @@ import { Observable } from 'rxjs/Observable';
 
 @Injectable()
 export class PurchaseService {
+
   private configSubject: Subject<TellerConfig> = new BehaviorSubject<TellerConfig>(null);
   private purchaseOrders: Subject<any[]> = new BehaviorSubject<any[]>([]);
   private purchaseUrl = environment.tellerUrl;
@@ -56,7 +57,6 @@ export class PurchaseService {
         if (!response.statuses || response.statuses.length > 1) {
           throw new Error('too many purchase orders found');
         }
-
         return response.statuses[0];
       });
   }
@@ -68,4 +68,5 @@ export class PurchaseService {
   private post(url, parameters = {}): any {
     return this.httpClient.post(this.purchaseUrl + url, parameters);
   }
+
 }

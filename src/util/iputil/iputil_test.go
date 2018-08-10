@@ -2,13 +2,10 @@ package iputil
 
 import (
 	"fmt"
-	"net"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
-func TestIsLocalhost(t *testing.T) {
+func TestSplitAddr(t *testing.T) {
 	testData := []struct {
 		host     string
 		expected bool
@@ -33,33 +30,19 @@ func TestIsLocalhost(t *testing.T) {
 			host:     "85.56.12.34",
 			expected: false,
 		},
-		{
-			host:     "::1",
-			expected: true,
-		},
-		{
-			host:     "::",
-			expected: false,
-		},
-		{
-			host:     "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
-			expected: false,
-		},
-		{
-			host:     "",
-			expected: false,
-		},
 	}
 
-	for _, tc := range testData {
-		t.Run(tc.host, func(t *testing.T) {
-			actual := IsLocalhost(tc.host)
-			require.Equal(t, tc.expected, actual)
-		})
+	for _, test := range testData {
+		actual := IsLocalhost(test.host)
+
+		if test.expected != actual {
+			t.Errorf("Expected %t is not equal to actual %t for host %s",
+				test.expected, actual, test.host)
+		}
 	}
 }
 
-func TestSplitAddr(t *testing.T) {
+func TestIsLocalhost(t *testing.T) {
 	testData := []struct {
 		input string
 		host  string
@@ -70,55 +53,46 @@ func TestSplitAddr(t *testing.T) {
 			input: "0.0.0.0:8888",
 			host:  "0.0.0.0",
 			port:  8888,
+			err:   nil,
 		},
 		{
 			input: "0.0.0.0:",
+			host:  "0.0.0.0",
 			err:   fmt.Errorf("Invalid port in %s", "0.0.0.0:"),
 		},
 		{
-			input: "0.0.0.0:x",
-			err:   fmt.Errorf("Invalid port in %s", "0.0.0.0:x"),
-		},
-		{
 			input: ":9999",
-			err:   fmt.Errorf("IP missing from %s", ":9999"),
+			port:  9999,
+			err:   fmt.Errorf("Invalid port in %s", ":9999"),
 		},
 		{
 			input: "127.0.0.1",
-			err: &net.AddrError{
-				Err:  "missing port in address",
-				Addr: "127.0.0.1",
-			},
-		},
-		{
-			input: "[2001:0db8:85a3:0000:0000:8a2e:0370:7334]:1234",
-			host:  "2001:0db8:85a3:0000:0000:8a2e:0370:7334",
-			port:  1234,
-		},
-		{
-			input: "[::]:1234",
-			host:  "::",
-			port:  1234,
-		},
-		{
-			input: "[::]:x",
-			err:   fmt.Errorf("Invalid port in %s", "[::]:x"),
+			host:  "127.0.0.1",
+			err:   fmt.Errorf("Invalid addr %s", "127.0.0.1"),
 		},
 	}
 
-	for _, tc := range testData {
-		t.Run(tc.input, func(t *testing.T) {
-			addr, port, err := SplitAddr(tc.input)
+	for _, test := range testData {
+		addr, port, err := SplitAddr(test.input)
 
-			if tc.err != nil {
-				require.Equal(t, tc.err, err)
-				return
-			}
+		if test.err == nil && err != nil {
+			t.Errorf("Unexpected error %v", err)
+			return
+		}
 
-			require.NoError(t, err)
+		if test.err != nil && err != nil && err.Error() != test.err.Error() {
+			t.Errorf("Expected error %v, actual %v", test.err, err)
+			return
+		}
 
-			require.Equal(t, tc.host, addr)
-			require.Equal(t, tc.port, port)
-		})
+		if addr != test.host {
+			t.Errorf("Wrong host, expected %s actual %s", test.host, addr)
+			return
+		}
+
+		if port != test.port {
+			t.Errorf("Wrong port, expected %d actual %d", test.port, port)
+			return
+		}
 	}
 }

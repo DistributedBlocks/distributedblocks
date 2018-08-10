@@ -11,10 +11,9 @@ export class WizardGuardService implements CanActivate {
 
   canActivate(next: ActivatedRouteSnapshot, state: RouterStateSnapshot): Promise<boolean> {
     return new Promise<boolean>(resolve => {
-      this.walletService.all().first().subscribe(wallets => {
+      this.walletService.all().subscribe(wallets => {
         if (wallets.length === 0) {
           this.router.navigate(['/wizard']);
-
           return resolve(false);
         }
 

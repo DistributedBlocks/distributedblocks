@@ -4,7 +4,9 @@ set -e -o pipefail
 # Compresses packaged electron apps after
 # ./package-electron-release.sh is done
 
-GOX_OSARCH="$@"
+if [ -n "$1" ]; then
+    GOX_OSARCH="$1"
+fi
 
 . build-conf.sh "$GOX_OSARCH"
 

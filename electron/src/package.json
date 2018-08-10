@@ -5,6 +5,7 @@
   "dependencies": {
     "axios": "^0.18.0",
     "electron-context-menu": "^0.9.1",
-    "electron-debug": "^1.5.0"
+    "electron-debug": "^1.0.1",
+    "electron-log": "^1.2.2"
   }
 }

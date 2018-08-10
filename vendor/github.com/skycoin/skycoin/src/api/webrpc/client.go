@@ -27,14 +27,14 @@ const (
 // ErrJSONUnmarshal is returned if JSON unmarshal fails
 var ErrJSONUnmarshal = errors.New("JSON unmarshal failed")
 
-// ClientError is used for non-200 API responses
-type ClientError struct {
+// APIError is used for non-200 API responses
+type APIError struct {
 	Status     string
 	StatusCode int
 	Message    string
 }
 
-func (e ClientError) Error() string {
+func (e APIError) Error() string {
 	return e.Message
 }
 
@@ -250,7 +250,7 @@ func do(httpClient *http.Client, rpcReq *Request, rpcAddress, csrf string) (*Res
 		return nil, err
 	}
 
-	url := rpcAddress + "api/v1/webrpc"
+	url := rpcAddress + "webrpc"
 	body := bytes.NewBuffer(d)
 	req, err := http.NewRequest(http.MethodPost, url, body)
 	if err != nil {
@@ -275,7 +275,7 @@ func do(httpClient *http.Client, rpcReq *Request, rpcAddress, csrf string) (*Res
 			return nil, err
 		}
 
-		return nil, ClientError{
+		return nil, APIError{
 			Status:     resp.Status,
 			StatusCode: resp.StatusCode,
 			Message:    strings.TrimSpace(string(body)),

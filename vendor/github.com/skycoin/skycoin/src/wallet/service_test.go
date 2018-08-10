@@ -693,6 +693,7 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 		opts             Options
 		pwd              []byte
 		unspents         []coin.UxOut
+		vld              Validator
 		coins            uint64
 		dest             cipher.Address
 		disableWalletAPI bool
@@ -704,8 +705,11 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxouts[:],
-			coins:    2e6,
-			dest:     addrs[0],
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 2e6,
+			dest:  addrs[0],
 		},
 		{
 			name: "encrypted=true has change=no",
@@ -716,8 +720,11 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 			},
 			pwd:      []byte("pwd"),
 			unspents: uxouts[:],
-			coins:    2e6,
-			dest:     addrs[0],
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 2e6,
+			dest:  addrs[0],
 		},
 		{
 			name: "encrypted=false has change=yes",
@@ -725,8 +732,38 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxouts[:],
-			coins:    1e6,
-			dest:     addrs[0],
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 1e6,
+			dest:  addrs[0],
+		},
+		{
+			name: "encrypted=false has unconfirmed spending transaction",
+			opts: Options{
+				Seed: string(seed),
+			},
+			unspents: uxouts[:],
+			vld: &dummyValidator{
+				ok: true,
+			},
+			coins: 2e6,
+			dest:  addrs[0],
+			err:   ErrSpendingUnconfirmed,
+		},
+		{
+			name: "encrypted=false unconfirmed spend failed",
+			opts: Options{
+				Seed: string(seed),
+			},
+			unspents: uxouts[:],
+			vld: &dummyValidator{
+				ok:  false,
+				err: errors.New("fail intentionally"),
+			},
+			coins: 2e6,
+			dest:  addrs[0],
+			err:   errors.New("checking unconfirmed spending failed: fail intentionally"),
 		},
 		{
 			name: "encrypted=false spend zero",
@@ -734,8 +771,11 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxouts[:],
-			dest:     addrs[0],
-			err:      ErrZeroSpend,
+			vld: &dummyValidator{
+				ok: false,
+			},
+			dest: addrs[0],
+			err:  ErrZeroSpend,
 		},
 		{
 			name: "encrypted=false spend fractional coins",
@@ -743,8 +783,11 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxouts[:],
-			coins:    1e3,
-			dest:     addrs[0],
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 1e3,
+			dest:  addrs[0],
 		},
 		{
 			name: "encrypted=false not enough confirmed coins",
@@ -752,9 +795,12 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxouts[:],
-			coins:    100e6,
-			dest:     addrs[0],
-			err:      ErrInsufficientBalance,
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 100e6,
+			dest:  addrs[0],
+			err:   ErrInsufficientBalance,
 		},
 		{
 			name: "encrypted=false no coin hours in inputs",
@@ -762,9 +808,12 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed: string(seed),
 			},
 			unspents: uxoutsNoHours[:],
-			coins:    1e6,
-			dest:     addrsNoHours[0],
-			err:      fee.ErrTxnNoFee,
+			vld: &dummyValidator{
+				ok: false,
+			},
+			coins: 1e6,
+			dest:  addrsNoHours[0],
+			err:   fee.ErrTxnNoFee,
 		},
 		{
 			name: "disable wallet api=true",
@@ -772,6 +821,7 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				Seed:  string(seed),
 				Label: "label",
 			},
+			vld:              &dummyValidator{},
 			disableWalletAPI: true,
 			err:              ErrWalletAPIDisabled,
 		},
@@ -781,16 +831,15 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 		for ct := range cryptoTable {
 			name := fmt.Sprintf("crypto=%v %v", ct, tc.name)
 			t.Run(name, func(t *testing.T) {
-				addrUxOuts := coin.AddressUxOuts{
-					addr: tc.unspents,
+				unspents := &dummyUnspentGetter{
+					addrUnspents: coin.AddressUxOuts{
+						addr: tc.unspents,
+					},
+					unspents: map[cipher.SHA256]coin.UxOut{},
 				}
 
-				unspents := make(map[cipher.SHA256]coin.UxOut)
-
-				for _, uxs := range addrUxOuts {
-					for _, ux := range uxs {
-						unspents[ux.Hash()] = ux
-					}
+				for _, ux := range tc.unspents {
+					unspents.unspents[ux.Hash()] = ux
 				}
 
 				dir := prepareWltDir()
@@ -802,7 +851,7 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				require.NoError(t, err)
 
 				if tc.disableWalletAPI {
-					_, err = s.CreateAndSignTransaction("", tc.pwd, addrUxOuts, uint64(headTime), tc.coins, tc.dest)
+					_, err = s.CreateAndSignTransaction("", tc.pwd, tc.vld, unspents, uint64(headTime), tc.coins, tc.dest)
 					require.Equal(t, tc.err, err)
 					return
 				}
@@ -812,10 +861,9 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 				w, err := s.CreateWallet(wltName, tc.opts, nil)
 				require.NoError(t, err)
 
-				tx, err := s.CreateAndSignTransaction(w.Filename(), tc.pwd, addrUxOuts, uint64(headTime), tc.coins, tc.dest)
+				tx, err := s.CreateAndSignTransaction(w.Filename(), tc.pwd, tc.vld, unspents, uint64(headTime), tc.coins, tc.dest)
 
 				if tc.err != nil {
-					require.Error(t, err)
 					require.Equal(t, tc.err, err, err.Error())
 					return
 				}
@@ -824,7 +872,7 @@ func TestServiceCreateAndSignTransaction(t *testing.T) {
 
 				// check the IN of tx
 				for _, inUxid := range tx.In {
-					_, ok := unspents[inUxid]
+					_, ok := unspents.unspents[inUxid]
 					require.True(t, ok)
 				}
 
@@ -864,9 +912,10 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 	}
 
 	// shuffle the uxouts to test that the uxout sorting during spend selection is working
-	rand.Shuffle(len(uxouts), func(i, j int) {
+	for i := range uxouts {
+		j := rand.Intn(i + 1)
 		uxouts[i], uxouts[j] = uxouts[j], uxouts[i]
-	})
+	}
 
 	// Create extra unspent outputs. These have the same value as uxouts, but are spendable by
 	// keys held in extraWalletAddrs
@@ -893,9 +942,10 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 	}
 
 	// shuffle the uxouts to test that the uxout sorting during spend selection is working
-	rand.Shuffle(len(uxoutsNoHours), func(i, j int) {
+	for i := range uxoutsNoHours {
+		j := rand.Intn(i + 1)
 		uxoutsNoHours[i], uxoutsNoHours[j] = uxoutsNoHours[j], uxoutsNoHours[i]
-	})
+	}
 
 	changeAddress := testutil.MakeAddress()
 
@@ -903,7 +953,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		HoursSelection: HoursSelection{
 			Type: HoursSelectionTypeManual,
 		},
-		ChangeAddress: &changeAddress,
+		ChangeAddress: changeAddress,
 		To: []coin.TransactionOutput{
 			{
 				Address: addrs[0],
@@ -920,23 +970,6 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		d, err := decimal.NewFromString(a)
 		require.NoError(t, err)
 		return &d
-	}
-
-	firstAddress := func(uxa coin.UxArray) cipher.Address {
-		require.NotEmpty(t, uxa)
-
-		addresses := make([]cipher.Address, len(uxa))
-		for i, a := range uxa {
-			addresses[i] = a.Body.Address
-		}
-
-		sort.Slice(addresses, func(i, j int) bool {
-			x := addresses[i].Bytes()
-			y := addresses[j].Bytes()
-			return bytes.Compare(x, y) < 0
-		})
-
-		return addresses[0]
 	}
 
 	cases := []struct {
@@ -965,7 +998,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name:   "params invalid",
 			params: CreateTransactionParams{},
-			err:    NewError(errors.New("To is required")),
+			err:    NewError(errors.New("ChangeAddress is required")),
 		},
 
 		{
@@ -994,9 +1027,27 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
+			name:   "unconfirmed validator failed",
+			params: validParams,
+			vld: &dummyValidator{
+				err: errors.New("validator failed"),
+			},
+			err: errors.New("checking unconfirmed spending failed: validator failed"),
+		},
+
+		{
+			name:   "has unconfirmed transactions",
+			params: validParams,
+			vld: &dummyValidator{
+				ok: true,
+			},
+			err: ErrSpendingUnconfirmed,
+		},
+
+		{
 			name: "overflowing coin hours in params",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1019,7 +1070,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name: "overflowing coins in params",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1042,7 +1093,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name: "no unspents",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1060,7 +1111,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name: "insufficient coins",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1079,7 +1130,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name: "insufficient hours",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1096,61 +1147,9 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "insufficient coins for specified uxouts",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-				Wallet: CreateTransactionWalletParams{
-					UxOuts: []cipher.SHA256{
-						extraUxouts[0][0].Hash(),
-					},
-				},
-				To: []coin.TransactionOutput{
-					{
-						Address: addrs[0],
-						Hours:   1,
-						Coins:   3e6,
-					},
-				},
-			},
-			addressUnspents: coin.AddressUxOuts{
-				extraWalletAddrs[0]: []coin.UxOut{extraUxouts[0][0]},
-			},
-			err: ErrInsufficientBalance,
-		},
-
-		{
-			name: "insufficient hours for specified uxouts",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-				Wallet: CreateTransactionWalletParams{
-					UxOuts: []cipher.SHA256{
-						extraUxouts[0][0].Hash(),
-					},
-				},
-				To: []coin.TransactionOutput{
-					{
-						Address: addrs[0],
-						Hours:   200,
-						Coins:   1e6,
-					},
-				},
-			},
-			addressUnspents: coin.AddressUxOuts{
-				extraWalletAddrs[0]: []coin.UxOut{extraUxouts[0][0]},
-			},
-			err: ErrInsufficientHours,
-		},
-
-		{
 			name: "manual, 1 output, no change",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1167,13 +1166,15 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "manual, 1 output, no change, unknown address in auxs",
+			name: "manual, 1 output, no change, unknown address",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
-				Wallet: CreateTransactionWalletParams{},
+				Wallet: CreateTransactionWalletParams{
+					Addresses: append(extraWalletAddrs, testutil.MakeAddress()),
+				},
 				To: []coin.TransactionOutput{
 					{
 						Address: addrs[0],
@@ -1182,16 +1183,13 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 					},
 				},
 			},
-			addressUnspents: coin.AddressUxOuts{
-				testutil.MakeAddress(): []coin.UxOut{extraUxouts[0][0]},
-			},
 			err: ErrUnknownAddress,
 		},
 
 		{
 			name: "manual, 1 output, change",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1213,34 +1211,11 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "manual, 1 output, change, unspecified change address",
-			params: CreateTransactionParams{
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-				To: []coin.TransactionOutput{
-					{
-						Address: addrs[0],
-						Hours:   50,
-						Coins:   2e6 + 1,
-					},
-				},
-			},
-			unspents:       uxouts,
-			chosenUnspents: []coin.UxOut{originalUxouts[0], originalUxouts[1]},
-			changeOutput: &coin.TransactionOutput{
-				Address: firstAddress([]coin.UxOut{originalUxouts[0], originalUxouts[1]}),
-				Hours:   50,
-				Coins:   2e6 - 1,
-			},
-		},
-
-		{
 			// there are leftover coin hours and an additional input is added
 			// to force change to save the leftover coin hours
 			name: "manual, 1 output, forced change",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1266,7 +1241,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 			// but there are no more unspents to use to force a change output
 			name: "manual, 1 output, forced change rejected no more unspents",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1288,7 +1263,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 			// but the hours cost of saving them with an additional input is less than is leftover
 			name: "manual, 1 output, forced change rejected",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1308,7 +1283,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		{
 			name: "manual, multiple outputs",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
@@ -1340,13 +1315,15 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "manual, multiple outputs, varied addressUnspents",
+			name: "manual, multiple outputs, specific spend addresses",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
-				Wallet: CreateTransactionWalletParams{},
+				Wallet: CreateTransactionWalletParams{
+					Addresses: extraWalletAddrs,
+				},
 				To: []coin.TransactionOutput{
 					{
 						Address: addrs[0],
@@ -1368,6 +1345,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 			addressUnspents: coin.AddressUxOuts{
 				extraWalletAddrs[0]: []coin.UxOut{extraUxouts[0][0]},
 				extraWalletAddrs[3]: []coin.UxOut{extraUxouts[3][1], extraUxouts[3][2]},
+				addr:                []coin.UxOut{originalUxouts[3], originalUxouts[4], originalUxouts[5]},
 				extraWalletAddrs[5]: []coin.UxOut{extraUxouts[5][6]},
 			},
 			chosenUnspents: []coin.UxOut{extraUxouts[0][0], extraUxouts[3][1], extraUxouts[3][2], extraUxouts[5][6]},
@@ -1379,65 +1357,9 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "manual, multiple uxouts, varied addressUnspents, wallet outputs specified",
+			name: "auto, multiple outputs, split even, share factor 0.5",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-				Wallet: CreateTransactionWalletParams{
-					UxOuts: []cipher.SHA256{
-						extraUxouts[0][0].Hash(),
-						extraUxouts[3][1].Hash(),
-						extraUxouts[3][2].Hash(),
-						extraUxouts[5][6].Hash(),
-
-						// this extra output is not necessary to satisfy the spend,
-						// it is included to test that when UxOuts are specified,
-						// only a subset is used
-						extraUxouts[0][8].Hash(),
-					},
-				},
-				To: []coin.TransactionOutput{
-					{
-						Address: addrs[0],
-						Hours:   50,
-						Coins:   1e6,
-					},
-					{
-						Address: addrs[0],
-						Hours:   50,
-						Coins:   1e6 + 1,
-					},
-					{
-						Address: addrs[1],
-						Hours:   70,
-						Coins:   2e6,
-					},
-				},
-			},
-			addressUnspents: coin.AddressUxOuts{
-				extraWalletAddrs[0]: []coin.UxOut{extraUxouts[0][0], extraUxouts[0][8]},
-				extraWalletAddrs[3]: []coin.UxOut{extraUxouts[3][1], extraUxouts[3][2]},
-				extraWalletAddrs[5]: []coin.UxOut{extraUxouts[5][6]},
-			},
-			chosenUnspents: []coin.UxOut{
-				extraUxouts[0][0],
-				extraUxouts[3][1],
-				extraUxouts[3][2],
-				extraUxouts[5][6],
-			},
-			changeOutput: &coin.TransactionOutput{
-				Address: changeAddress,
-				Hours:   34,
-				Coins:   4e6 - 1,
-			},
-		},
-
-		{
-			name: "auto, multiple outputs, share factor 0.5",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type:        HoursSelectionTypeAuto,
 					Mode:        HoursSelectionModeShare,
@@ -1473,50 +1395,13 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "auto, multiple outputs, share factor 0.5, switch to 1.0 because no change could be made",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				HoursSelection: HoursSelection{
-					Type:        HoursSelectionTypeAuto,
-					Mode:        HoursSelectionModeShare,
-					ShareFactor: newShareFactor("0.5"),
-				},
-				To: []coin.TransactionOutput{
-					{
-						Address: addrs[0],
-						Coins:   1e6,
-					},
-					{
-						Address: addrs[0],
-						Coins:   2e6,
-					},
-					{
-						Address: addrs[1],
-						Coins:   2e6,
-					},
-					{
-						Address: addrs[4],
-						Coins:   1e6 - 1e3,
-					},
-					{
-						Address: addrs[4],
-						Coins:   1e3,
-					},
-				},
-			},
-			unspents:        []coin.UxOut{originalUxouts[0], originalUxouts[1], originalUxouts[2]},
-			chosenUnspents:  []coin.UxOut{originalUxouts[0], originalUxouts[1], originalUxouts[2]},
-			toExpectedHours: []uint64{25, 50, 50, 25, 1},
-		},
-
-		{
-			name: "encrypted, auto, multiple outputs, share factor 0.5",
+			name: "encrypted, auto, multiple outputs, split even, share factor 0.5",
 			opts: Options{
 				Encrypt:  true,
 				Password: []byte("password"),
 			},
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type:        HoursSelectionTypeAuto,
 					Mode:        HoursSelectionModeShare,
@@ -1555,9 +1440,9 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "auto, multiple outputs, share factor 0",
+			name: "auto, multiple outputs, split even, share factor 0",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type:        HoursSelectionTypeAuto,
 					Mode:        HoursSelectionModeShare,
@@ -1593,9 +1478,9 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 		},
 
 		{
-			name: "auto, multiple outputs, share factor 1",
+			name: "auto, multiple outputs, split even, share factor 1",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				HoursSelection: HoursSelection{
 					Type:        HoursSelectionTypeAuto,
 					Mode:        HoursSelectionModeShare,
@@ -1637,7 +1522,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 				HoursSelection: HoursSelection{
 					Type: HoursSelectionTypeManual,
 				},
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To: []coin.TransactionOutput{
 					{
 						Address: addrs[0],
@@ -1665,22 +1550,28 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 			name := fmt.Sprintf("crypto=%v %v", ct, tc.name)
 			fmt.Println(name)
 			t.Run(name, func(t *testing.T) {
+				if tc.vld == nil {
+					tc.vld = &dummyValidator{}
+				}
+
 				if tc.headTime == 0 {
 					tc.headTime = headTime
 				}
 
-				addrUxOuts := coin.AddressUxOuts{
-					addr: tc.unspents,
+				unspents := &dummyUnspentGetter{
+					addrUnspents: coin.AddressUxOuts{
+						addr: tc.unspents,
+					},
+					unspents: map[cipher.SHA256]coin.UxOut{},
 				}
 
 				if tc.addressUnspents != nil {
-					addrUxOuts = tc.addressUnspents
+					unspents.addrUnspents = tc.addressUnspents
 				}
 
-				unspents := make(map[cipher.SHA256]coin.UxOut)
-				for _, uxs := range addrUxOuts {
+				for _, uxs := range unspents.addrUnspents {
 					for _, ux := range uxs {
-						unspents[ux.Hash()] = ux
+						unspents.unspents[ux.Hash()] = ux
 					}
 				}
 
@@ -1710,15 +1601,6 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 					if !w.IsEncrypted() {
 						_, err := s.NewAddresses(w.Filename(), nil, 10)
 						require.NoError(t, err)
-
-						w, err = s.GetWallet(wltName)
-						require.NoError(t, err)
-
-						require.Equal(t, 11, len(w.Entries))
-						require.Equal(t, w.Entries[0].Address, addr)
-						for i, e := range w.Entries[1:] {
-							require.Equal(t, e.Address, extraWalletAddrs[i])
-						}
 					}
 
 					tc.params.Wallet.ID = wltName
@@ -1726,7 +1608,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 
 				s.enableWalletAPI = !tc.disableWalletAPI
 
-				txn, inputs, err := s.CreateAndSignTransactionAdvanced(tc.params, addrUxOuts, tc.headTime)
+				txn, inputs, err := s.CreateAndSignTransactionAdvanced(tc.params, tc.vld, unspents, tc.headTime)
 				if tc.err != nil {
 					require.Equal(t, tc.err, err)
 					return
@@ -1748,7 +1630,7 @@ func TestServiceCreateAndSignTransactionAdvanced(t *testing.T) {
 				}
 
 				for i, inUxid := range txn.In {
-					_, ok := unspents[inUxid]
+					_, ok := unspents.unspents[inUxid]
 					require.True(t, ok)
 
 					require.Equal(t, inUxid, inputs[i].Hash)
@@ -2555,7 +2437,36 @@ func TestGetWalletSeed(t *testing.T) {
 	}
 }
 
-func makeUxOut(t *testing.T, s cipher.SecKey, coins, hours uint64) coin.UxOut { // nolint: unparam
+type dummyValidator struct {
+	ok  bool
+	err error
+}
+
+func (dvld dummyValidator) HasUnconfirmedSpendTx(addr []cipher.Address) (bool, error) {
+	return dvld.ok, dvld.err
+}
+
+type dummyUnspentGetter struct {
+	addrUnspents coin.AddressUxOuts
+	unspents     map[cipher.SHA256]coin.UxOut
+}
+
+func (dug dummyUnspentGetter) GetUnspentsOfAddrs(addrs []cipher.Address) coin.AddressUxOuts {
+	out := coin.AddressUxOuts{}
+	for _, a := range addrs {
+		if x, ok := dug.addrUnspents[a]; ok {
+			out[a] = x
+		}
+	}
+	return out
+}
+
+func (dug dummyUnspentGetter) Get(uxid cipher.SHA256) (coin.UxOut, bool) {
+	uxout, ok := dug.unspents[uxid]
+	return uxout, ok
+}
+
+func makeUxOut(t *testing.T, s cipher.SecKey, coins, hours uint64) coin.UxOut {
 	body := makeUxBody(t, s, coins, hours)
 	tm := rand.Int31n(1000)
 	seq := rand.Int31n(100)

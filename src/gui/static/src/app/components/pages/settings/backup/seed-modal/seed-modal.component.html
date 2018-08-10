@@ -1,11 +1,11 @@
-<app-modal [headline]="'title.seed' | translate" [dialog]="dialogRef">
+<app-modal title="Wallet Seed" [dialog]="dialogRef">
   <div class="form-field">
-    <label for="seed">{{ 'backup.seed' | translate }}</label>
+    <label for="seed">Seed</label>
     <textarea id="seed" readonly>{{ data.seed }}</textarea>
   </div>
   <div class="-buttons">
     <app-button (action)="dialogRef.close()">
-      {{ 'backup.close-button' | translate }}
+      Close
     </app-button>
   </div>
 </app-modal>

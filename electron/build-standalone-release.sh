@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -e -o pipefail
 
-GOX_OSARCH="$@"
+ if [ -n "$1" ]; then
+    GOX_OSARCH="$1"
+fi
 
 . build-conf.sh "$GOX_OSARCH"
 
@@ -22,6 +24,6 @@ echo "Packaging standalone release"
 
 echo "------------------------------"
 echo "Compressing standalone release"
-./compress-standalone-release.sh "$GOX_OSARCH"
+#./compress-standalone-release.sh "$GOX_OSARCH"
 
 popd >/dev/null

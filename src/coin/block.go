@@ -2,11 +2,14 @@ package coin
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/cipher/encoder"
+
+	"github.com/skycoin/skycoin/src/util/logging"
 )
+
+var logger = logging.MustGetLogger("coin")
 
 // Block represents the block struct
 type Block struct {
@@ -145,7 +148,7 @@ func (b Block) GetTransaction(txHash cipher.SHA256) (Transaction, bool) {
 // NewBlockHeader creates block header
 func NewBlockHeader(prev BlockHeader, uxHash cipher.SHA256, currentTime, fee uint64, body BlockBody) BlockHeader {
 	if currentTime <= prev.Time {
-		log.Panic("Time can only move forward")
+		logger.Panic("Time can only move forward")
 	}
 	prevHash := prev.Hash()
 	return BlockHeader{

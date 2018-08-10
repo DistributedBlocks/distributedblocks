@@ -7,9 +7,10 @@ import { Wallet } from '../../../app.datatypes';
 @Component({
   selector: 'app-wallets',
   templateUrl: './wallets.component.html',
-  styleUrls: ['./wallets.component.scss'],
+  styleUrls: ['./wallets.component.scss']
 })
 export class WalletsComponent {
+
   constructor(
     public walletService: WalletService,
     private dialog: MatDialog,

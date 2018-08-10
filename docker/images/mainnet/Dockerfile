@@ -1,9 +1,7 @@
 # skycoin build
 # reference https://github.com/skycoin/skycoin
-ARG IMAGE_FROM=busybox
-FROM golang:1.10.1-stretch AS build
-ARG ARCH=amd64
-ARG GOARM
+FROM golang:1.10 AS build
+
 ARG SKYCOIN_VERSION
 
 COPY . $GOPATH/src/github.com/skycoin/skycoin
@@ -20,18 +18,10 @@ RUN sh -c \
      fi'
 
 RUN cd $GOPATH/src/github.com/skycoin/skycoin && \
-    COMMIT=$(git rev-parse HEAD) BRANCH=$(git rev-parse -—abbrev-ref HEAD) \
-    GOARCH=$ARCH GOARM=$GOARM CGO_ENABLED=0 GOOS=linux \
-    GOLDFLAGS="-X main.Commit=${COMMIT} -X main.Branch=${BRANCH}" \
-    go install -ldflags "${GOLDFLAGS}" ./cmd/... && \
-    sh -c "if test -d $GOPATH/bin/linux_arm ; then mv $GOPATH/bin/linux_arm/* $GOPATH/bin/; fi; \
-           if test -d $GOPATH/bin/linux_arm64 ; then mv $GOPATH/bin/linux_arm64/* $GOPATH/bin/; fi"
-
-RUN apt-get update && \
-    apt-get install -y ca-certificates
+  CGO_ENABLED=0 GOOS=linux go install -a -installsuffix cgo ./...
 
 # skycoin image
-FROM $IMAGE_FROM
+FROM alpine:3.7
 
 ENV COIN="skycoin"
 ENV RPC_ADDR="http://0.0.0.0:6420" \
@@ -47,10 +37,7 @@ COPY --from=build /go/bin/* /usr/bin/
 COPY --from=build /go/src/github.com/skycoin/skycoin/src/gui/static /usr/local/skycoin/src/gui/static
 
 # copy launcher
-COPY docker_launcher.sh /usr/local/bin/docker_launcher.sh
-
-#Copy certificates
-COPY --from=build /etc/ssl/certs /etc/ssl/certs
+COPY docker_launcher.sh /usr/local/bin
 
 # volumes
 VOLUME $WALLET_DIR

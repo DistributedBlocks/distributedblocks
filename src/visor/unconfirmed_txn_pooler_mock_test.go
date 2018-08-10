@@ -10,9 +10,11 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
+	bolt "github.com/boltdb/bolt"
+
 	cipher "github.com/skycoin/skycoin/src/cipher"
 	coin "github.com/skycoin/skycoin/src/coin"
-	"github.com/skycoin/skycoin/src/visor/dbutil"
+	blockdb "github.com/skycoin/skycoin/src/visor/blockdb"
 )
 
 // UnconfirmedTxnPoolerMock mock
@@ -24,10 +26,28 @@ func NewUnconfirmedTxnPoolerMock() *UnconfirmedTxnPoolerMock {
 	return &UnconfirmedTxnPoolerMock{}
 }
 
-// ForEach mocked method
-func (m *UnconfirmedTxnPoolerMock) ForEach(p0 *dbutil.Tx, p1 func(cipher.SHA256, UnconfirmedTxn) error) error {
+// FilterKnown mocked method
+func (m *UnconfirmedTxnPoolerMock) FilterKnown(p0 []cipher.SHA256) []cipher.SHA256 {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
+
+	var r0 []cipher.SHA256
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case []cipher.SHA256:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// ForEach mocked method
+func (m *UnconfirmedTxnPoolerMock) ForEach(p0 func(cipher.SHA256, *UnconfirmedTxn) error) error {
+
+	ret := m.Called(p0)
 
 	var r0 error
 	switch res := ret.Get(0).(type) {
@@ -43,9 +63,9 @@ func (m *UnconfirmedTxnPoolerMock) ForEach(p0 *dbutil.Tx, p1 func(cipher.SHA256,
 }
 
 // Get mocked method
-func (m *UnconfirmedTxnPoolerMock) Get(p0 *dbutil.Tx, p1 cipher.SHA256) (*UnconfirmedTxn, error) {
+func (m *UnconfirmedTxnPoolerMock) Get(p0 cipher.SHA256) (*UnconfirmedTxn, bool) {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 *UnconfirmedTxn
 	switch res := ret.Get(0).(type) {
@@ -56,10 +76,10 @@ func (m *UnconfirmedTxnPoolerMock) Get(p0 *dbutil.Tx, p1 cipher.SHA256) (*Unconf
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
-	var r1 error
+	var r1 bool
 	switch res := ret.Get(1).(type) {
 	case nil:
-	case error:
+	case bool:
 		r1 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
@@ -70,9 +90,9 @@ func (m *UnconfirmedTxnPoolerMock) Get(p0 *dbutil.Tx, p1 cipher.SHA256) (*Unconf
 }
 
 // GetIncomingOutputs mocked method
-func (m *UnconfirmedTxnPoolerMock) GetIncomingOutputs(p0 *dbutil.Tx, p1 coin.BlockHeader) (coin.UxArray, error) {
+func (m *UnconfirmedTxnPoolerMock) GetIncomingOutputs(p0 coin.BlockHeader) coin.UxArray {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 coin.UxArray
 	switch res := ret.Get(0).(type) {
@@ -83,28 +103,37 @@ func (m *UnconfirmedTxnPoolerMock) GetIncomingOutputs(p0 *dbutil.Tx, p1 coin.Blo
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
+	return r0
 
 }
 
 // GetKnown mocked method
-func (m *UnconfirmedTxnPoolerMock) GetKnown(p0 *dbutil.Tx, p1 []cipher.SHA256) (coin.Transactions, error) {
+func (m *UnconfirmedTxnPoolerMock) GetKnown(p0 []cipher.SHA256) coin.Transactions {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 coin.Transactions
 	switch res := ret.Get(0).(type) {
 	case nil:
 	case coin.Transactions:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// GetSpendingOutputs mocked method
+func (m *UnconfirmedTxnPoolerMock) GetSpendingOutputs(p0 blockdb.UnspentPool) (coin.UxArray, error) {
+
+	ret := m.Called(p0)
+
+	var r0 coin.UxArray
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case coin.UxArray:
 		r0 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
@@ -124,9 +153,9 @@ func (m *UnconfirmedTxnPoolerMock) GetKnown(p0 *dbutil.Tx, p1 []cipher.SHA256) (
 }
 
 // GetTxHashes mocked method
-func (m *UnconfirmedTxnPoolerMock) GetTxHashes(p0 *dbutil.Tx, p1 func(tx UnconfirmedTxn) bool) ([]cipher.SHA256, error) {
+func (m *UnconfirmedTxnPoolerMock) GetTxHashes(p0 func(tx UnconfirmedTxn) bool) []cipher.SHA256 {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 []cipher.SHA256
 	switch res := ret.Get(0).(type) {
@@ -137,23 +166,14 @@ func (m *UnconfirmedTxnPoolerMock) GetTxHashes(p0 *dbutil.Tx, p1 func(tx Unconfi
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
+	return r0
 
 }
 
 // GetTxns mocked method
-func (m *UnconfirmedTxnPoolerMock) GetTxns(p0 *dbutil.Tx, p1 func(tx UnconfirmedTxn) bool) ([]UnconfirmedTxn, error) {
+func (m *UnconfirmedTxnPoolerMock) GetTxns(p0 func(tx UnconfirmedTxn) bool) []UnconfirmedTxn {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 []UnconfirmedTxn
 	switch res := ret.Get(0).(type) {
@@ -164,6 +184,42 @@ func (m *UnconfirmedTxnPoolerMock) GetTxns(p0 *dbutil.Tx, p1 func(tx Unconfirmed
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
+	return r0
+
+}
+
+// GetUnspentsOfAddr mocked method
+func (m *UnconfirmedTxnPoolerMock) GetUnspentsOfAddr(p0 cipher.Address) coin.UxArray {
+
+	ret := m.Called(p0)
+
+	var r0 coin.UxArray
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case coin.UxArray:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// InjectTxn mocked method
+func (m *UnconfirmedTxnPoolerMock) InjectTxn(p0 Blockchainer, p1 coin.Transaction) (bool, error) {
+
+	ret := m.Called(p0, p1)
+
+	var r0 bool
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case bool:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
 	var r1 error
 	switch res := ret.Get(1).(type) {
 	case nil:
@@ -177,8 +233,71 @@ func (m *UnconfirmedTxnPoolerMock) GetTxns(p0 *dbutil.Tx, p1 func(tx Unconfirmed
 
 }
 
-// GetUnknown mocked method
-func (m *UnconfirmedTxnPoolerMock) GetUnknown(p0 *dbutil.Tx, p1 []cipher.SHA256) ([]cipher.SHA256, error) {
+// Len mocked method
+func (m *UnconfirmedTxnPoolerMock) Len() int {
+
+	ret := m.Called()
+
+	var r0 int
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case int:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// RawTxns mocked method
+func (m *UnconfirmedTxnPoolerMock) RawTxns() coin.Transactions {
+
+	ret := m.Called()
+
+	var r0 coin.Transactions
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case coin.Transactions:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// RecvOfAddresses mocked method
+func (m *UnconfirmedTxnPoolerMock) RecvOfAddresses(p0 coin.BlockHeader, p1 []cipher.Address) (coin.AddressUxOuts, error) {
+
+	ret := m.Called(p0, p1)
+
+	var r0 coin.AddressUxOuts
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case coin.AddressUxOuts:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	var r1 error
+	switch res := ret.Get(1).(type) {
+	case nil:
+	case error:
+		r1 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0, r1
+
+}
+
+// Refresh mocked method
+func (m *UnconfirmedTxnPoolerMock) Refresh(p0 Blockchainer, p1 int) ([]cipher.SHA256, error) {
 
 	ret := m.Called(p0, p1)
 
@@ -204,15 +323,85 @@ func (m *UnconfirmedTxnPoolerMock) GetUnknown(p0 *dbutil.Tx, p1 []cipher.SHA256)
 
 }
 
-// GetUnspentsOfAddr mocked method
-func (m *UnconfirmedTxnPoolerMock) GetUnspentsOfAddr(p0 *dbutil.Tx, p1 cipher.Address) (coin.UxArray, error) {
+// RemoveInvalid mocked method
+func (m *UnconfirmedTxnPoolerMock) RemoveInvalid(p0 Blockchainer) ([]cipher.SHA256, error) {
+
+	ret := m.Called(p0)
+
+	var r0 []cipher.SHA256
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case []cipher.SHA256:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	var r1 error
+	switch res := ret.Get(1).(type) {
+	case nil:
+	case error:
+		r1 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0, r1
+
+}
+
+// RemoveTransactions mocked method
+func (m *UnconfirmedTxnPoolerMock) RemoveTransactions(p0 []cipher.SHA256) error {
+
+	ret := m.Called(p0)
+
+	var r0 error
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case error:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// RemoveTransactionsWithTx mocked method
+func (m *UnconfirmedTxnPoolerMock) RemoveTransactionsWithTx(p0 *bolt.Tx, p1 []cipher.SHA256) {
+
+	m.Called(p0, p1)
+
+}
+
+// SetAnnounced mocked method
+func (m *UnconfirmedTxnPoolerMock) SetAnnounced(p0 cipher.SHA256, p1 int64) error {
 
 	ret := m.Called(p0, p1)
 
-	var r0 coin.UxArray
+	var r0 error
 	switch res := ret.Get(0).(type) {
 	case nil:
-	case coin.UxArray:
+	case error:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0
+
+}
+
+// SpendsOfAddresses mocked method
+func (m *UnconfirmedTxnPoolerMock) SpendsOfAddresses(p0 []cipher.Address, p1 blockdb.UnspentGetter) (coin.AddressUxOuts, error) {
+
+	ret := m.Called(p0, p1)
+
+	var r0 coin.AddressUxOuts
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case coin.AddressUxOuts:
 		r0 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
@@ -232,9 +421,9 @@ func (m *UnconfirmedTxnPoolerMock) GetUnspentsOfAddr(p0 *dbutil.Tx, p1 cipher.Ad
 }
 
 // InjectTransaction mocked method
-func (m *UnconfirmedTxnPoolerMock) InjectTransaction(p0 *dbutil.Tx, p1 Blockchainer, p2 coin.Transaction, p3 int) (bool, *ErrTxnViolatesSoftConstraint, error) {
+func (m *UnconfirmedTxnPoolerMock) InjectTransaction(p0 Blockchainer, p1 coin.Transaction, p2 int) (bool, *ErrTxnViolatesSoftConstraint, error) {
 
-	ret := m.Called(p0, p1, p2, p3)
+	ret := m.Called(p0, p1, p2)
 
 	var r0 bool
 	switch res := ret.Get(0).(type) {
@@ -264,176 +453,5 @@ func (m *UnconfirmedTxnPoolerMock) InjectTransaction(p0 *dbutil.Tx, p1 Blockchai
 	}
 
 	return r0, r1, r2
-
-}
-
-// Len mocked method
-func (m *UnconfirmedTxnPoolerMock) Len(p0 *dbutil.Tx) (uint64, error) {
-
-	ret := m.Called(p0)
-
-	var r0 uint64
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case uint64:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// RawTxns mocked method
-func (m *UnconfirmedTxnPoolerMock) RawTxns(p0 *dbutil.Tx) (coin.Transactions, error) {
-
-	ret := m.Called(p0)
-
-	var r0 coin.Transactions
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case coin.Transactions:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// RecvOfAddresses mocked method
-func (m *UnconfirmedTxnPoolerMock) RecvOfAddresses(p0 *dbutil.Tx, p1 coin.BlockHeader, p2 []cipher.Address) (coin.AddressUxOuts, error) {
-
-	ret := m.Called(p0, p1, p2)
-
-	var r0 coin.AddressUxOuts
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case coin.AddressUxOuts:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// Refresh mocked method
-func (m *UnconfirmedTxnPoolerMock) Refresh(p0 *dbutil.Tx, p1 Blockchainer, p2 int) ([]cipher.SHA256, error) {
-
-	ret := m.Called(p0, p1, p2)
-
-	var r0 []cipher.SHA256
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case []cipher.SHA256:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// RemoveInvalid mocked method
-func (m *UnconfirmedTxnPoolerMock) RemoveInvalid(p0 *dbutil.Tx, p1 Blockchainer) ([]cipher.SHA256, error) {
-
-	ret := m.Called(p0, p1)
-
-	var r0 []cipher.SHA256
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case []cipher.SHA256:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// RemoveTransactions mocked method
-func (m *UnconfirmedTxnPoolerMock) RemoveTransactions(p0 *dbutil.Tx, p1 []cipher.SHA256) error {
-
-	ret := m.Called(p0, p1)
-
-	var r0 error
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case error:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0
-
-}
-
-// SetTxnsAnnounced mocked method
-func (m *UnconfirmedTxnPoolerMock) SetTxnsAnnounced(p0 *dbutil.Tx, p1 map[cipher.SHA256]int64) error {
-
-	ret := m.Called(p0, p1)
-
-	var r0 error
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case error:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0
 
 }

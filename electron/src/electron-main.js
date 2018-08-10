@@ -2,6 +2,8 @@
 
 const { app, Menu, BrowserWindow, dialog, shell, session } = require('electron');
 
+var log = require('electron-log');
+
 const path = require('path');
 
 const childProcess = require('child_process');
@@ -19,6 +21,7 @@ require('electron-context-menu')({});
 
 global.eval = function() { throw new Error('bad!!'); }
 
+const defaultURL = 'http://127.0.0.1:9620/';
 let currentURL;
 
 // Force everything localhost, in case of a leak
@@ -36,10 +39,10 @@ let win;
 var skycoin = null;
 
 function startSkycoin() {
-  console.log('Starting distributedblocks from electron');
+  console.log('Starting DistributedBlocks from electron');
 
   if (skycoin) {
-    console.log('distributedblocks already running');
+    console.log('DistributedBlocks already running');
     app.emit('skycoin-ready');
     return
   }
@@ -74,17 +77,12 @@ function startSkycoin() {
     '-enable-seed-api=true',
     '-enable-wallet-api=true',
     '-rpc-interface=false',
-    '-disable-csrf=false',
-    '-reset-corrupt-db=true',
-    '-enable-gui=true',
-    '-web-interface-port=0' // random port assignment
+    "-disable-csrf=false"
     // will break
     // broken (automatically generated certs do not work):
     // '-web-interface-https=true',
   ]
   skycoin = childProcess.spawn(exe, args);
-
-  createWindow();
 
   skycoin.on('error', (e) => {
     dialog.showErrorBox('Failed to start distributedblocks', e.toString());
@@ -97,15 +95,13 @@ function startSkycoin() {
     if (currentURL) {
       return
     }
-
     const marker = 'Starting web interface on ';
-
-    data.toString().split("\n").forEach(line => {
-      if (line.indexOf(marker) !== -1) {
-        currentURL = 'http://' + line.split(marker)[1].trim();
-        app.emit('skycoin-ready', { url: currentURL });
-      }
-    });
+    var i = data.indexOf(marker);
+    if (i === -1) {
+      return
+    }
+    currentURL = defaultURL;
+    app.emit('skycoin-ready', { url: currentURL });
   });
 
   skycoin.stderr.on('data', (data) => {
@@ -113,19 +109,23 @@ function startSkycoin() {
   });
 
   skycoin.on('close', (code) => {
-    // log.info('distributedblocks closed');
+    // log.info('Skycoin closed');
     console.log('distributedblocks closed');
     reset();
   });
 
   skycoin.on('exit', (code) => {
-    // log.info('distributedblocks exited');
+    // log.info('Skycoin exited');
     console.log('distributedblocks exited');
     reset();
   });
 }
 
 function createWindow(url) {
+  if (!url) {
+    url = defaultURL;
+  }
+
   // To fix appImage doesn't show icon in dock issue.
   var appPath = app.getPath('exe');
   var iconPath = (() => {
@@ -146,12 +146,6 @@ function createWindow(url) {
       webgl: false,
       webaudio: false,
       contextIsolation: true,
-      webviewTag: false,
-      nodeIntegration: false,
-      nodeIntegrationInWorker: false,
-      allowRunningInsecureContent: false,
-      webSecurity: true,
-      plugins: false,
     },
   });
 
@@ -168,11 +162,7 @@ function createWindow(url) {
     console.log('Cleared the stored cached data');
   });
 
-  if (url) {
-    win.loadURL(url);
-  } else {
-    win.loadURL('file://' + __dirname + '/splash/index.html');
-  }
+  win.loadURL(url);
 
   // Open the DevTools.
   // win.webContents.openDevTools();
@@ -248,7 +238,7 @@ const alreadyRunning = app.makeSingleInstance((commandLine, workingDirectory) =>
     }
     win.focus();
   } else {
-    createWindow(currentURL);
+    createWindow(currentURL || defaultURL);
   }
 });
 
@@ -265,14 +255,10 @@ let walletsFolder = null;
 app.on('ready', startSkycoin);
 
 app.on('skycoin-ready', (e) => {
-  if (win) {
-    win.loadURL(e.url);
-  } else {
-    createWindow(e.url);
-  }
+  createWindow(e.url);
 
   axios
-    .get(e.url + '/api/v1/wallets/folderName')
+    .get(defaultURL + 'wallets/folderName')
     .then(response => walletsFolder = response.data.address)
     .catch(() => {});
 });
@@ -290,7 +276,7 @@ app.on('activate', () => {
   // On OS X it's common to re-create a window in the app when the
   // dock icon is clicked and there are no other windows open.
   if (win === null) {
-    createWindow(currentURL);
+    createWindow();
   }
 });
 

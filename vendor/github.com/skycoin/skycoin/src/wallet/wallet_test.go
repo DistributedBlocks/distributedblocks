@@ -506,7 +506,7 @@ func TestLockAndUnLock(t *testing.T) {
 	}
 }
 
-func makeWallet(t *testing.T, opts Options, addrNum uint64) *Wallet { // nolint: unparam
+func makeWallet(t *testing.T, opts Options, addrNum uint64) *Wallet {
 	// Create an unlocked wallet, then generate addresses, lock if the options.Encrypt is true.
 	preOpts := opts
 	opts.Encrypt = false
@@ -1364,9 +1364,10 @@ func TestWalletSortSpendsHighToLow(t *testing.T) {
 		uxb := make([]UxBalance, len(orderedUxb))
 		copy(uxb, orderedUxb)
 
-		rand.Shuffle(len(uxb), func(i, j int) {
+		for i := range uxb {
+			j := rand.Intn(i + 1)
 			uxb[i], uxb[j] = uxb[j], uxb[i]
-		})
+		}
 
 		if !uxBalancesEqual(uxb, orderedUxb) {
 			shuffleWorked = true
@@ -1404,7 +1405,7 @@ func TestWalletChooseSpendsMaximizeUxOuts(t *testing.T) {
 	}
 }
 
-func TestWalletChooseSpendsMinimizeUxOutsRandom(t *testing.T) {
+func TestWalletChooseSpendsMinimizeUxOuts(t *testing.T) {
 	nRand := 10000
 	for i := 0; i < nRand; i++ {
 		coins := uint64((rand.Intn(3)+1)*10 + rand.Intn(3)) // 10,20,30 + 0,1,2
@@ -1898,7 +1899,6 @@ func verifySortedCoinsHighToLow(t *testing.T, uxb []UxBalance) {
 
 func TestCreateWalletParamsVerify(t *testing.T) {
 	changeAddress := testutil.MakeAddress()
-
 	toManual := []coin.TransactionOutput{
 		{
 			Address: testutil.MakeAddress(),
@@ -1928,25 +1928,20 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 	onePointOne := decimal.New(11, -1)
 	pointOneOne := decimal.New(11, -2)
 
-	uxoutHash := testutil.RandSHA256(t)
-
 	cases := []struct {
 		name   string
 		params CreateTransactionParams
 		err    string
 	}{
 		{
-			name: "null change address",
-			params: CreateTransactionParams{
-				ChangeAddress: &cipher.Address{},
-			},
-			err: "ChangeAddress must not be the null address",
+			name: "no change address",
+			err:  "ChangeAddress is required",
 		},
 
 		{
 			name: "no to destinations",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 			},
 			err: "To is required",
 		},
@@ -1954,7 +1949,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "missing to coins",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To: []coin.TransactionOutput{
 					{
 						Address: testutil.MakeAddress(),
@@ -1968,7 +1963,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "missing to address",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To: []coin.TransactionOutput{
 					{
 						Coins: 5,
@@ -1982,7 +1977,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "missing wallet id",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 			},
 			err: "Wallet.ID is required",
@@ -1991,7 +1986,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "wallet addresses contains empty value",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2004,7 +1999,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "nonzero to hours for auto selection",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2020,7 +2015,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "mode missing for auto selection",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2036,7 +2031,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "mode set for manual selection",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2053,7 +2048,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "missing hours selection type",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2069,7 +2064,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "invalid hours selection type",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2085,7 +2080,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "invalid hours selection mode",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2102,7 +2097,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "share factor not set for split even mode",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2119,7 +2114,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "share factor set but not split even mode",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2136,7 +2131,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "share factor less than 0",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2154,7 +2149,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "share factor greater than 1",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2172,7 +2167,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "duplicate output when manual",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            []coin.TransactionOutput{toManual[0], toManual[0]},
 				Wallet: CreateTransactionWalletParams{
 					ID: "foo.wlt",
@@ -2187,7 +2182,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "duplicate output when auto",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            []coin.TransactionOutput{toAuto[0], toAuto[0]},
 				Wallet: CreateTransactionWalletParams{
 					ID: "foo.wlt",
@@ -2202,58 +2197,9 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		},
 
 		{
-			name: "both uxouts and addresses specified",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				To:            toManual,
-				Wallet: CreateTransactionWalletParams{
-					ID:        "foo.wlt",
-					Addresses: []cipher.Address{changeAddress},
-					UxOuts:    []cipher.SHA256{uxoutHash},
-				},
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-			},
-			err: "Wallet.UxOuts and Wallet.Addresses cannot be combined",
-		},
-
-		{
-			name: "duplicate uxouts",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				To:            toManual,
-				Wallet: CreateTransactionWalletParams{
-					ID:     "foo.wlt",
-					UxOuts: []cipher.SHA256{uxoutHash, uxoutHash},
-				},
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-			},
-			err: "Wallet.UxOuts contains duplicate values",
-		},
-
-		{
-			name: "duplicate addresses",
-			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
-				To:            toManual,
-				Wallet: CreateTransactionWalletParams{
-					ID:        "foo.wlt",
-					Addresses: []cipher.Address{changeAddress, changeAddress},
-				},
-				HoursSelection: HoursSelection{
-					Type: HoursSelectionTypeManual,
-				},
-			},
-			err: "Wallet.Addresses contains duplicate values",
-		},
-
-		{
 			name: "valid auto split even share factor",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toAuto,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",
@@ -2270,7 +2216,7 @@ func TestCreateWalletParamsVerify(t *testing.T) {
 		{
 			name: "valid manual",
 			params: CreateTransactionParams{
-				ChangeAddress: &changeAddress,
+				ChangeAddress: changeAddress,
 				To:            toManual,
 				Wallet: CreateTransactionWalletParams{
 					ID:        "foo.wlt",

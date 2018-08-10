@@ -1,4 +1,4 @@
-@import '../../../../theme/variables';
+@import '../../../../theme/_variables.scss';
 
 .-paper {
   background-color: #fbfbfb;
@@ -71,7 +71,7 @@
       }
 
       .-timestamp {
-        color: $grey;
+        color: rgba(30, 34, 39, 0.2);
       }
     }
 
@@ -99,8 +99,7 @@
   }
 
   .-balance {
-    width: 200px;
-    text-align: right;
+    width: 100px;
 
     h4 {
       color: #1e2227;
@@ -116,10 +115,6 @@
       font-size: 13px;
       line-height: 15px;
       margin: 0;
-
-      span {
-        color: lighten($grey, 40%);
-      }
     }
   }
 }

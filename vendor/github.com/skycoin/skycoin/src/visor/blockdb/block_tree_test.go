@@ -1,13 +1,14 @@
 package blockdb
 
 import (
+	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/coin"
-	"github.com/skycoin/skycoin/src/visor/dbutil"
+	"github.com/skycoin/skycoin/src/testutil"
 )
 
 type blockInfo struct {
@@ -24,10 +25,11 @@ type blockCase struct {
 }
 
 func testCase(t *testing.T, cases []blockCase) {
-	db, close := prepareDB(t)
+	db, close := testutil.PrepareDB(t)
 	defer close()
 
-	btree := &blockTree{}
+	btree, err := newBlockTree(db)
+	assert.Nil(t, err)
 	blocks := make([]coin.Block, len(cases))
 	for i, d := range cases {
 		var preHash cipher.SHA256
@@ -45,31 +47,27 @@ func testCase(t *testing.T, cases []blockCase) {
 		}
 		blocks[i] = b
 
-		err := db.Update("", func(tx *dbutil.Tx) error {
-			switch d.Action {
-			case "add":
-				err := btree.AddBlock(tx, &b)
-				require.Equal(t, d.Err, err, "expect err:%v, but get err:%v", d.Err, err)
-
-				if err == nil {
-					b1, err := btree.GetBlock(tx, b.HashHeader())
-					require.NoError(t, err)
-					require.Equal(t, b, *b1)
-				}
-			case "remove":
-				err := btree.RemoveBlock(tx, &b)
-				require.Equal(t, d.Err, err, "expect err:%v, but get err:%v", d.Err, err)
-				if err == nil {
-					b1, err := btree.GetBlock(tx, b.HashHeader())
-					require.NoError(t, err)
-					require.Nil(t, b1)
-				}
+		switch d.Action {
+		case "add":
+			err := btree.AddBlock(&b)
+			if err != d.Err {
+				t.Fatal(fmt.Sprintf("expect err:%v, but get err:%v", d.Err, err))
 			}
 
-			return nil
-		})
-
-		require.NoError(t, err)
+			if err == nil {
+				b1 := btree.GetBlock(b.HashHeader())
+				assert.Equal(t, *b1, b)
+			}
+		case "remove":
+			err := btree.RemoveBlock(&b)
+			if err != d.Err {
+				t.Fatal(fmt.Sprintf("expect err:%v, but get err:%v", d.Err, err))
+			}
+			if err == nil {
+				b1 := btree.GetBlock(b.HashHeader())
+				assert.Nil(t, b1)
+			}
+		}
 	}
 }
 
@@ -161,10 +159,11 @@ func TestRemoveBlock(t *testing.T) {
 }
 
 func TestGetBlockInDepth(t *testing.T) {
-	db, teardown := prepareDB(t)
+	db, teardown := testutil.PrepareDB(t)
 	defer teardown()
 
-	bc := &blockTree{}
+	bc, err := newBlockTree(db)
+	assert.Nil(t, err)
 	blocks := []coin.Block{
 		coin.Block{
 			Head: coin.BlockHeader{
@@ -187,42 +186,21 @@ func TestGetBlockInDepth(t *testing.T) {
 		},
 	}
 
-	err := db.Update("", func(tx *dbutil.Tx) error {
-		err := bc.AddBlock(tx, &blocks[0])
-		require.NoError(t, err)
+	assert.Nil(t, bc.AddBlock(&blocks[0]))
+	blocks[1].Head.PrevHash = blocks[0].HashHeader()
+	assert.Nil(t, bc.AddBlock(&blocks[1]))
+	blocks[2].Head.PrevHash = blocks[0].HashHeader()
+	assert.Nil(t, bc.AddBlock(&blocks[2]))
 
-		blocks[1].Head.PrevHash = blocks[0].HashHeader()
-		err = bc.AddBlock(tx, &blocks[1])
-		require.NoError(t, err)
-
-		blocks[2].Head.PrevHash = blocks[0].HashHeader()
-		err = bc.AddBlock(tx, &blocks[2])
-		require.NoError(t, err)
-
-		return nil
-	})
-
-	require.NoError(t, err)
-
-	var block *coin.Block
-	err = db.View("", func(tx *dbutil.Tx) error {
-		var err error
-		block, err = bc.GetBlockInDepth(tx, 1, func(tx *dbutil.Tx, hps []coin.HashPair) (cipher.SHA256, bool) {
-			for _, hp := range hps {
-				b, err := bc.GetBlock(tx, hp.Hash)
-				require.NoError(t, err)
-				if b.Time() == 2 {
-					return b.HashHeader(), true
-				}
+	block := bc.GetBlockInDepth(1, func(hps []coin.HashPair) cipher.SHA256 {
+		for _, hp := range hps {
+			b := bc.GetBlock(hp.Hash)
+			if b.Time() == 2 {
+				return b.HashHeader()
 			}
-			return cipher.SHA256{}, false
-		})
-		require.NoError(t, err)
-		return err
+		}
+		return cipher.SHA256{}
 	})
 
-	require.NoError(t, err)
-
-	require.NotNil(t, block)
-	require.Equal(t, blocks[2], *block)
+	assert.Equal(t, *block, blocks[2])
 }

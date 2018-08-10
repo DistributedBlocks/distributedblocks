@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/skycoin/skycoin/src/cli"
+	"github.com/skycoin/skycoin/src/api/cli"
 )
 
 func main() {

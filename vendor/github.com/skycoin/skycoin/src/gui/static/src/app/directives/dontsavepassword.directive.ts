@@ -1,12 +1,11 @@
 import { Directive, ElementRef, HostListener } from '@angular/core';
 
 @Directive({
-  selector: '[appDontSavePassword]',
+  selector: '[appDontSavePassword]'
 })
 export class DontsavepasswordDirective {
-  constructor(
-    private el: ElementRef,
-  ) {
+
+  constructor(private el: ElementRef) {
     el.nativeElement.autocomplete = 'new-password';
     el.nativeElement.readOnly = true;
   }
@@ -14,4 +13,5 @@ export class DontsavepasswordDirective {
   @HostListener('focus') onFocus() {
     this.el.nativeElement.readOnly = false;
   }
+
 }

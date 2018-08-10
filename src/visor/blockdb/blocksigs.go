@@ -1,14 +1,11 @@
 package blockdb
 
 import (
+	"github.com/boltdb/bolt"
+
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/cipher/encoder"
-	"github.com/skycoin/skycoin/src/visor/dbutil"
-)
-
-var (
-	// BlockSigsBkt holds block signatures
-	BlockSigsBkt = []byte("block_sigs")
+	"github.com/skycoin/skycoin/src/visor/bucket"
 )
 
 // blockSigs manages known blockSigs as received.
@@ -21,39 +18,40 @@ var (
 // blockSigs per BkSeq, or use hashes as keys.  For now, this is not a
 // problem assuming the signed blocks created from master are valid blocks,
 // because we can check the signature independently of the blockchain.
-type blockSigs struct{}
+type blockSigs struct {
+	Sigs *bucket.Bucket
+}
 
-// Get returns the signature of a specific block
-func (bs blockSigs) Get(tx *dbutil.Tx, hash cipher.SHA256) (cipher.Sig, bool, error) {
-	var sig cipher.Sig
+var (
+	blockSigsBkt = []byte("block_sigs")
+)
 
-	if ok, err := dbutil.GetBucketObjectDecoded(tx, BlockSigsBkt, hash[:], &sig); err != nil {
-		return cipher.Sig{}, false, err
-	} else if !ok {
-		return cipher.Sig{}, false, nil
+// newBlockSigs create block signature buckets
+func newBlockSigs(db *bolt.DB) (*blockSigs, error) {
+	sigs, err := bucket.New(blockSigsBkt, db)
+	if err != nil {
+		return nil, err
 	}
 
+	return &blockSigs{
+		Sigs: sigs,
+	}, nil
+}
+
+// Get returns signature of specific block
+func (bs blockSigs) Get(hash cipher.SHA256) (cipher.Sig, bool, error) {
+	bin := bs.Sigs.Get(hash[:])
+	if bin == nil {
+		return cipher.Sig{}, false, nil
+	}
+	var sig cipher.Sig
+	if err := encoder.DeserializeRaw(bin, &sig); err != nil {
+		return cipher.Sig{}, false, err
+	}
 	return sig, true, nil
 }
 
-// Add adds a signed block to the db
-func (bs *blockSigs) Add(tx *dbutil.Tx, hash cipher.SHA256, sig cipher.Sig) error {
-	return dbutil.PutBucketValue(tx, BlockSigsBkt, hash[:], encoder.Serialize(sig))
-}
-
-// ForEach iterates all signatures and calls f on them
-func (bs *blockSigs) ForEach(tx *dbutil.Tx, f func(cipher.SHA256, cipher.Sig) error) error {
-	return dbutil.ForEach(tx, BlockSigsBkt, func(k, v []byte) error {
-		hash, err := cipher.SHA256FromBytes(k)
-		if err != nil {
-			return err
-		}
-
-		var sig cipher.Sig
-		if err := encoder.DeserializeRaw(v, &sig); err != nil {
-			return err
-		}
-
-		return f(hash, sig)
-	})
+// AddWithTx add signed block with bolt.Tx
+func (bs *blockSigs) AddWithTx(tx *bolt.Tx, hash cipher.SHA256, sig cipher.Sig) error {
+	return bs.Sigs.PutWithTx(tx, hash[:], encoder.Serialize(sig))
 }

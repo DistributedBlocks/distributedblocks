@@ -77,13 +77,13 @@ func (num *Number) splitExp(r1, r2 *Number) {
 	r2.Sub(&bnt1.Int, &bnt2.Int)
 }
 
-func (num *Number) split(rl, rh *Number, bits uint) { // nolint: unparam
+func (num *Number) split(rl, rh *Number, bits uint) {
 	rl.Int.Set(&num.Int)
 	rh.Int.Rsh(&rl.Int, bits)
 	rl.maskBits(bits)
 }
 
-func (num *Number) rsh(bits uint) { // nolint: unparam
+func (num *Number) rsh(bits uint) {
 	num.Rsh(&num.Int, bits)
 }
 
@@ -102,7 +102,7 @@ func (num *Number) IsOdd() bool {
 	return num.Bit(0) != 0
 }
 
-func (num *Number) getBin(le int) []byte { // nolint: unparam
+func (num *Number) getBin(le int) []byte {
 	bts := num.Bytes()
 	if len(bts) > le {
 		panic("buffer too small")

@@ -151,13 +151,10 @@ func NewDummyMessage() Message {
 
 type ErrorMessage struct{}
 
-var (
-	ErrorPrefix            = MessagePrefix{'E', 'R', 'R', 0x00}
-	ErrErrorMessageHandler = errors.New("Bad")
-)
+var ErrorPrefix = MessagePrefix{'E', 'R', 'R', 0x00}
 
 func (em *ErrorMessage) Handle(context *MessageContext, x interface{}) error {
-	return ErrErrorMessageHandler
+	return errors.New("Bad")
 }
 
 func NewErrorMessage() Message {

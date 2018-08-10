@@ -15,9 +15,6 @@ type BalancePair struct {
 	Predicted Balance `json:"predicted"` //do "pending"
 }
 
-// AddressBalance represents a map of address balances
-type AddressBalance map[string]BalancePair
-
 // Balance is consisted of Coins and Hours
 type Balance struct {
 	Coins uint64 `json:"coins"`

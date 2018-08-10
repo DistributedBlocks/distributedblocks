@@ -7,6 +7,7 @@ import { MatDialogRef } from '@angular/material/dialog';
   styleUrls: ['./onboarding-safeguard.component.scss'],
 })
 export class OnboardingSafeguardComponent {
+
   public acceptSafe = false;
 
   constructor(
@@ -20,4 +21,5 @@ export class OnboardingSafeguardComponent {
   setAccept(event) {
     this.acceptSafe = event.checked;
   }
+
 }

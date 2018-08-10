@@ -10,7 +10,6 @@ import (
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/coin"
 	"github.com/skycoin/skycoin/src/testutil"
-	"github.com/skycoin/skycoin/src/visor/dbutil"
 )
 
 // set rand seed.
@@ -21,9 +20,9 @@ var _ = func() int64 {
 }()
 
 func TestTransactionGet(t *testing.T) {
-	txns := make([]Transaction, 0, 3)
+	txs := make([]Transaction, 0, 3)
 	for i := 0; i < 3; i++ {
-		txns = append(txns, makeTransaction(t))
+		txs = append(txs, makeTransaction())
 	}
 
 	testCases := []struct {
@@ -33,54 +32,45 @@ func TestTransactionGet(t *testing.T) {
 	}{
 		{
 			"get first",
-			txns[0].Hash(),
-			&txns[0],
+			txs[0].Hash(),
+			&txs[0],
 		},
 		{
 			"get second",
-			txns[1].Hash(),
-			&txns[1],
+			txs[1].Hash(),
+			&txs[1],
 		},
 		{
 			"not exist",
-			txns[2].Hash(),
+			txs[2].Hash(),
 			nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			db, td := prepareDB(t)
+			db, td := testutil.PrepareDB(t)
 			defer td()
-
-			txsBkt := newTransactions()
+			txsBkt, err := newTransactionsBkt(db)
+			require.Nil(t, err)
 
 			// init the bkt
-			err := db.Update("", func(tx *dbutil.Tx) error {
-				for _, txn := range txns[:2] {
-					err := txsBkt.Add(tx, &txn)
-					require.NoError(t, err)
-				}
-				return nil
-			})
-			require.NoError(t, err)
+			for _, tx := range txs[:2] {
+				require.Nil(t, txsBkt.Add(&tx))
+			}
 
 			// get slice
-			err = db.View("", func(tx *dbutil.Tx) error {
-				ts, err := txsBkt.Get(tx, tc.hash)
-				require.NoError(t, err)
-				require.Equal(t, tc.expect, ts)
-				return nil
-			})
-			require.NoError(t, err)
+			ts, err := txsBkt.Get(tc.hash)
+			require.Nil(t, err)
+			require.Equal(t, tc.expect, ts)
 		})
 	}
 }
 
 func TestTransactionGetSlice(t *testing.T) {
-	txns := make([]Transaction, 0, 4)
+	txs := make([]Transaction, 0, 4)
 	for i := 0; i < 4; i++ {
-		txns = append(txns, makeTransaction(t))
+		txs = append(txs, makeTransaction())
 	}
 
 	testCases := []struct {
@@ -91,67 +81,59 @@ func TestTransactionGetSlice(t *testing.T) {
 		{
 			"get one",
 			[]cipher.SHA256{
-				txns[0].Hash(),
+				txs[0].Hash(),
 			},
-			txns[:1],
+			txs[:1],
 		},
 		{
 			"get two",
 			[]cipher.SHA256{
-				txns[0].Hash(),
-				txns[1].Hash(),
+				txs[0].Hash(),
+				txs[1].Hash(),
 			},
-			txns[:2],
+			txs[:2],
 		},
 		{
 			"get all",
 			[]cipher.SHA256{
-				txns[0].Hash(),
-				txns[1].Hash(),
-				txns[2].Hash(),
+				txs[0].Hash(),
+				txs[1].Hash(),
+				txs[2].Hash(),
 			},
-			txns[:3],
+			txs[:3],
 		},
 		{
 			"not exist",
 			[]cipher.SHA256{
-				txns[3].Hash(),
+				txs[3].Hash(),
 			},
-			nil,
+			[]Transaction{},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			db, td := prepareDB(t)
+			db, td := testutil.PrepareDB(t)
 			defer td()
-			txsBkt := newTransactions()
+			txsBkt, err := newTransactionsBkt(db)
+			require.Nil(t, err)
 
 			// init the bkt
-			err := db.Update("", func(tx *dbutil.Tx) error {
-				for _, txn := range txns[:3] {
-					err := txsBkt.Add(tx, &txn)
-					require.NoError(t, err)
-				}
-				return nil
-			})
-			require.NoError(t, err)
+			for _, tx := range txs[:3] {
+				require.Nil(t, txsBkt.Add(&tx))
+			}
 
 			// get slice
-			err = db.View("", func(tx *dbutil.Tx) error {
-				ts, err := txsBkt.GetSlice(tx, tc.hashes)
-				require.NoError(t, err)
-				require.Equal(t, tc.expect, ts)
-				return nil
-			})
-			require.NoError(t, err)
+			ts, err := txsBkt.GetSlice(tc.hashes)
+			require.Nil(t, err)
+			require.Equal(t, tc.expect, ts)
 		})
 	}
 }
 
-func makeTransaction(t *testing.T) Transaction {
+func makeTransaction() Transaction {
 	tx := Transaction{}
-	ux, s := makeUxOutWithSecret(t)
+	ux, s := makeUxOutWithSecret()
 	tx.Tx.PushInput(ux.Hash())
 	tx.Tx.SignInputs([]cipher.SecKey{s})
 	tx.Tx.PushOutput(makeAddress(), 1e6, 50)
@@ -165,18 +147,18 @@ func makeAddress() cipher.Address {
 	return cipher.AddressFromPubKey(p)
 }
 
-func makeUxBodyWithSecret(t *testing.T) (coin.UxBody, cipher.SecKey) {
+func makeUxBodyWithSecret() (coin.UxBody, cipher.SecKey) {
 	p, s := cipher.GenerateKeyPair()
 	return coin.UxBody{
-		SrcTransaction: testutil.RandSHA256(t),
+		SrcTransaction: cipher.SumSHA256(randBytes(128)),
 		Address:        cipher.AddressFromPubKey(p),
 		Coins:          1e6,
 		Hours:          100,
 	}, s
 }
 
-func makeUxOutWithSecret(t *testing.T) (coin.UxOut, cipher.SecKey) {
-	body, sec := makeUxBodyWithSecret(t)
+func makeUxOutWithSecret() (coin.UxOut, cipher.SecKey) {
+	body, sec := makeUxBodyWithSecret()
 	return coin.UxOut{
 		Head: coin.UxHead{
 			Time:  100,
@@ -184,4 +166,10 @@ func makeUxOutWithSecret(t *testing.T) (coin.UxOut, cipher.SecKey) {
 		},
 		Body: body,
 	}, sec
+}
+
+func randBytes(n int) []byte {
+	b := make([]byte, n)
+	rand.Read(b)
+	return b
 }

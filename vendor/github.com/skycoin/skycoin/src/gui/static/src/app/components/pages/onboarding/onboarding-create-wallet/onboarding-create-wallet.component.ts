@@ -1,10 +1,10 @@
 import { Component, EventEmitter, Input, OnInit, Output } from '@angular/core';
 import { FormBuilder, FormControl, FormGroup, Validators } from '@angular/forms';
 import { MatDialog, MatDialogConfig } from '@angular/material/dialog';
+import { WalletService } from '../../../../services/wallet.service';
 import { DoubleButtonActive } from '../../../layout/double-button/double-button.component';
 import { OnboardingSafeguardComponent } from './onboarding-safeguard/onboarding-safeguard.component';
 import { MatDialogRef } from '@angular/material';
-import { ApiService } from '../../../../services/api.service';
 
 @Component({
   selector: 'app-onboarding-create-wallet',
@@ -19,7 +19,7 @@ export class OnboardingCreateWalletComponent implements OnInit {
 
   constructor(
     private dialog: MatDialog,
-    private apiService: ApiService,
+    private walletService: WalletService,
     private formBuilder: FormBuilder,
   ) { }
 
@@ -28,15 +28,18 @@ export class OnboardingCreateWalletComponent implements OnInit {
   }
 
   initForm() {
-    this.form = this.formBuilder.group(
-      {
-        label: new FormControl('', [Validators.required]),
-        seed: new FormControl('', [Validators.required]),
-        confirm_seed: new FormControl(),
+    this.form = this.formBuilder.group({
+        label: new FormControl('', Validators.compose([
+          Validators.required, Validators.minLength(2),
+        ])),
+        seed: new FormControl('', Validators.compose([
+          Validators.required, Validators.minLength(2),
+        ])),
+        confirm_seed: new FormControl('',
+          Validators.compose(this.showCreateForm ? [Validators.required, Validators.minLength(2)] : [])
+        ),
       },
-      {
-        validator: this.showCreateForm ? this.seedMatchValidator.bind(this) : null,
-      },
+      this.showCreateForm ? { validator: this.seedMatchValidator.bind(this) } : {},
     );
 
     if (this.fill) {
@@ -68,7 +71,7 @@ export class OnboardingCreateWalletComponent implements OnInit {
   }
 
   generateSeed(entropy: number) {
-    this.apiService.generateSeed(entropy).subscribe(seed => this.form.get('seed').setValue(seed));
+    this.walletService.generateSeed(entropy).subscribe(seed => this.form.get('seed').setValue(seed));
   }
 
   get showCreateForm() {
@@ -84,13 +87,13 @@ export class OnboardingCreateWalletComponent implements OnInit {
   }
 
   private seedMatchValidator(g: FormGroup) {
-    return g.get('seed').value === g.get('confirm_seed').value ? null : { NotEqual: true };
+    return g.get('seed').value === g.get('confirm_seed').value
+      ? null : { mismatch: true };
   }
 
   private showSafe(): MatDialogRef<OnboardingSafeguardComponent> {
     const config = new MatDialogConfig();
     config.width = '450px';
-
     return this.dialog.open(OnboardingSafeguardComponent, config);
   }
 }

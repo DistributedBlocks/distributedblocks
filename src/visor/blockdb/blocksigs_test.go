@@ -3,13 +3,31 @@ package blockdb
 import (
 	"testing"
 
+	"github.com/boltdb/bolt"
 	"github.com/stretchr/testify/require"
 
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/cipher/encoder"
 	"github.com/skycoin/skycoin/src/testutil"
-	"github.com/skycoin/skycoin/src/visor/dbutil"
 )
+
+func TestNewBlockSigs(t *testing.T) {
+	db, closeDB := testutil.PrepareDB(t)
+	defer closeDB()
+
+	sigs, err := newBlockSigs(db)
+	require.NoError(t, err)
+	require.NotNil(t, sigs)
+
+	// check the bucket
+	require.NotNil(t, sigs.Sigs)
+
+	db.View(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(blockSigsBkt)
+		require.NotNil(t, bkt)
+		return nil
+	})
+}
 
 func TestBlockSigsGet(t *testing.T) {
 	type hashSig struct {
@@ -65,12 +83,12 @@ func TestBlockSigsGet(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			db, closeDB := prepareDB(t)
+			db, closeDB := testutil.PrepareDB(t)
 			defer closeDB()
 
 			// init db
-			err := db.Update("", func(tx *dbutil.Tx) error {
-				bkt, err := tx.CreateBucketIfNotExists(BlockSigsBkt)
+			db.Update(func(tx *bolt.Tx) error {
+				bkt, err := tx.CreateBucketIfNotExists(blockSigsBkt)
 				require.NoError(t, err)
 				for _, hs := range tc.init {
 					err = bkt.Put(hs.hash[:], encoder.Serialize(hs.sig))
@@ -78,43 +96,37 @@ func TestBlockSigsGet(t *testing.T) {
 				}
 				return nil
 			})
+
+			sigs, err := newBlockSigs(db)
 			require.NoError(t, err)
-
-			sigs := &blockSigs{}
-
-			err = db.View("", func(tx *dbutil.Tx) error {
-				sg, ok, err := sigs.Get(tx, tc.hash)
-				require.Equal(t, tc.expect.err, err)
-				require.Equal(t, tc.expect.exist, ok)
-				if ok {
-					require.Equal(t, tc.expect.sig, sg)
-				}
-
-				return nil
-			})
-			require.NoError(t, err)
+			sg, ok, err := sigs.Get(tc.hash)
+			require.Equal(t, tc.expect.err, err)
+			require.Equal(t, tc.expect.exist, ok)
+			if ok {
+				require.Equal(t, tc.expect.sig, sg)
+			}
 		})
 	}
 }
 
 func TestBlockSigsAddWithTx(t *testing.T) {
-	db, closeDB := prepareDB(t)
+	db, closeDB := testutil.PrepareDB(t)
 	defer closeDB()
 
 	_, s := cipher.GenerateKeyPair()
 	h := testutil.RandSHA256(t)
 	sig := cipher.SignHash(h, s)
 
-	sigs := &blockSigs{}
-
-	err := db.Update("", func(tx *dbutil.Tx) error {
-		return sigs.Add(tx, h, sig)
-	})
+	sigs, err := newBlockSigs(db)
 	require.NoError(t, err)
 
+	db.Update(func(tx *bolt.Tx) error {
+		return sigs.AddWithTx(tx, h, sig)
+	})
+
 	// check the db
-	err = db.View("", func(tx *dbutil.Tx) error {
-		bkt := tx.Bucket(BlockSigsBkt)
+	db.View(func(tx *bolt.Tx) error {
+		bkt := tx.Bucket(blockSigsBkt)
 		v := bkt.Get(h[:])
 		require.NotNil(t, v)
 		var s cipher.Sig
@@ -123,5 +135,4 @@ func TestBlockSigsAddWithTx(t *testing.T) {
 		require.Equal(t, sig, s)
 		return nil
 	})
-	require.NoError(t, err)
 }

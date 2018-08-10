@@ -621,6 +621,10 @@ func Test_Abnormal_Keys2(t *testing.T) {
 	}
 }
 
+func _pairGen(seckey []byte) []byte {
+	return nil
+}
+
 //ECDH test
 func Test_Abnormal_Keys3(t *testing.T) {
 

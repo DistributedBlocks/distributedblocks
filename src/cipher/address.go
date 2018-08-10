@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
 
 	"github.com/skycoin/skycoin/src/cipher/base58"
 )
@@ -57,7 +56,7 @@ func DecodeBase58Address(addr string) (Address, error) {
 	if err != nil {
 		return Address{}, err
 	}
-	return AddressFromBytes(b)
+	return addressFromBytes(b)
 }
 
 // MustDecodeBase58Address creates an Address from its base58 encoding.  Will panic if the addr is
@@ -65,7 +64,7 @@ func DecodeBase58Address(addr string) (Address, error) {
 func MustDecodeBase58Address(addr string) Address {
 	a, err := DecodeBase58Address(addr)
 	if err != nil {
-		log.Panicf("Invalid address %s: %v", addr, err)
+		logger.Panicf("Invalid address %s: %v", addr, err)
 	}
 	return a
 }
@@ -83,13 +82,13 @@ func BitcoinDecodeBase58Address(addr string) (Address, error) {
 func BitcoinMustDecodeBase58Address(addr string) Address {
 	a, err := BitcoinDecodeBase58Address(addr)
 	if err != nil {
-		log.Panicf("Invalid address %s: %v", addr, err)
+		logger.Panicf("Invalid address %s: %v", addr, err)
 	}
 	return a
 }
 
-// AddressFromBytes converts []byte to an Address
-func AddressFromBytes(b []byte) (addr Address, err error) {
+// Returns an address given an Address.Bytes()
+func addressFromBytes(b []byte) (addr Address, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = fmt.Errorf("%v", r)
@@ -102,6 +101,9 @@ func AddressFromBytes(b []byte) (addr Address, err error) {
 	a := Address{}
 	copy(a.Key[0:20], b[0:20])
 	a.Version = b[20]
+	if a.Version != 0 {
+		return Address{}, errors.New("Invalid version")
+	}
 
 	chksum := a.Checksum()
 	var checksum [4]byte
@@ -111,21 +113,7 @@ func AddressFromBytes(b []byte) (addr Address, err error) {
 		return Address{}, errors.New("Invalid checksum")
 	}
 
-	if a.Version != 0 {
-		return Address{}, errors.New("Invalid version")
-	}
-
 	return a, nil
-}
-
-// MustAddressFromBytes converts []byte to an Address, panicking on error
-func MustAddressFromBytes(b []byte) (Address, error) {
-	addr, err := AddressFromBytes(b)
-	if err != nil {
-		panic(err)
-	}
-
-	return addr, err
 }
 
 // Null returns true if the address is null (0x0000....)
@@ -234,6 +222,9 @@ func BitcoinAddressFromBytes(b []byte) (Address, error) {
 	a := Address{}
 	copy(a.Key[0:20], b[1:21])
 	a.Version = b[0]
+	if a.Version != 0 {
+		return Address{}, errors.New("Invalid version")
+	}
 
 	chksum := a.BitcoinChecksum()
 	var checksum [4]byte
@@ -241,10 +232,6 @@ func BitcoinAddressFromBytes(b []byte) (Address, error) {
 
 	if checksum != chksum {
 		return Address{}, errors.New("Invalid checksum")
-	}
-
-	if a.Version != 0 {
-		return Address{}, errors.New("Invalid version")
 	}
 
 	return a, nil
@@ -279,7 +266,7 @@ func SecKeyFromWalletImportFormat(input string) (SecKey, error) {
 
 	seckey := b[1:33]
 	if len(seckey) != 32 {
-		log.Panic("...")
+		logger.Panic("...")
 	}
 	return NewSecKey(b[1:33]), nil
 }
@@ -288,7 +275,7 @@ func SecKeyFromWalletImportFormat(input string) (SecKey, error) {
 func MustSecKeyFromWalletImportFormat(input string) SecKey {
 	seckey, err := SecKeyFromWalletImportFormat(input)
 	if err != nil {
-		log.Panicf("MustSecKeyFromWalletImportFormat, invalid seckey, %v", err)
+		logger.Panicf("MustSecKeyFromWalletImportFormat, invalid seckey, %v", err)
 	}
 	return seckey
 }

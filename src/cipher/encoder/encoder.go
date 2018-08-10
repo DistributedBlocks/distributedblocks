@@ -13,16 +13,6 @@
 // Varints are a method of encoding integers using one or more bytes;
 // numbers with smaller absolute value take a smaller number of bytes.
 // For a specification, see http://code.google.com/apis/protocolbuffers/docs/encoding.html.
-//
-// Fields can be ignored with the struct tag `enc:"-"` .
-// Unexported struct fields are ignored by default .
-//
-// Fields can be skipped if empty with the struct tag `enc:",omitempty"`
-// Note the comma, which follows package json's conventions.
-// Only Slice, Map and String types recognize the omitempty tag.
-// When omitempty is set, the no data will be written if the value is empty.
-// If the value is empty and omitempty is not set, then a length prefix with value 0 would be written.
-// omitempty can only be used for the last field in the struct
 package encoder
 
 import (
@@ -32,7 +22,6 @@ import (
 	"log"
 	"math"
 	"reflect"
-	"strings"
 )
 
 /*
@@ -41,18 +30,9 @@ Todo:
 - validate packet legnth for incoming
 */
 
-var (
-	// ErrBufferUnderflow bytes in input buffer not enough to deserialize expected type
-	ErrBufferUnderflow = errors.New("Not enough buffer data to deserialize")
-	// ErrInvalidOmitEmpty field tagged with omitempty and it's not last one in struct
-	ErrInvalidOmitEmpty = errors.New("omitempty only supported for the final field in the struct")
-)
-
 // TODO: constant length byte arrays must not be prefixed
 
-// EncodeInt encodes an Integer type contained in `data`
-// into buffer `b`. If `data` is not an Integer type,
-// panic message is logged.
+// EncodeInt encodes int
 func EncodeInt(b []byte, data interface{}) {
 	//var b [8]byte
 	var bs []byte
@@ -87,8 +67,7 @@ func EncodeInt(b []byte, data interface{}) {
 	}
 }
 
-// DecodeInt decodes `in` buffer into `data` parameter.
-// If `data` is not an Integer type, panic message is logged.
+// DecodeInt decodes int
 func DecodeInt(in []byte, data interface{}) {
 
 	n := intDestSize(data)
@@ -127,13 +106,11 @@ func DecodeInt(in []byte, data interface{}) {
 	}
 }
 
-// DeserializeAtomic deserializes `in` buffer into `data`
-// parameter. If `data` is not an atomic type
-// (i.e., Integer type or Boolean type), panic message is logged.
+// DeserializeAtomic fast path for atomic types.
 func DeserializeAtomic(in []byte, data interface{}) {
 	n := intDestSize(data)
 	if len(in) < n {
-		log.Panic(ErrBufferUnderflow)
+		log.Panic("Not enough data to deserialize")
 	}
 	if n != 0 {
 		var b [8]byte
@@ -171,11 +148,7 @@ func DeserializeAtomic(in []byte, data interface{}) {
 	}
 }
 
-// DeserializeRaw deserializes `in` buffer into return
-// parameter. If `data` is not either a Pointer type,
-// a Slice type or a Struct type, an error message
-// is returned. If `in` buffer can't be deserialized,
-// an error message is returned.
+// DeserializeRaw deserialize raw
 func DeserializeRaw(in []byte, data interface{}) error {
 	v := reflect.ValueOf(data)
 	switch v.Kind() {
@@ -201,11 +174,7 @@ func DeserializeRaw(in []byte, data interface{}) error {
 	return d1.value(v)
 }
 
-// Deserialize reads `dsize` bytes from `r` and deserializes
-// the resulting buffer into return parameter. If `data`
-// is not either a Pointer type, a Slice type or a Struct type,
-// an error message is returned. If `in` buffer can't be deserialized,
-// an error message is returned.
+// Deserialize takes reader and number of bytes to read
 func Deserialize(r io.Reader, dsize int, data interface{}) error {
 	// Fallback to reflect-based decoding.
 	//fmt.Printf("A1 v is type %s \n", reflect.TypeOf(data).String() )
@@ -249,9 +218,7 @@ func Deserialize(r io.Reader, dsize int, data interface{}) error {
 	return d1.value(v)
 }
 
-// CanDeserialize returns true if `in` buffer can be
-// deserialized into `dst`'s type. Returns false in any
-// other case.
+// CanDeserialize does a check to see if serialization would be successful
 func CanDeserialize(in []byte, dst reflect.Value) bool {
 	d1 := &decoder{buf: make([]byte, len(in))}
 	copy(d1.buf, in)
@@ -261,12 +228,7 @@ func CanDeserialize(in []byte, dst reflect.Value) bool {
 	return true
 }
 
-// DeserializeRawToValue deserializes `in` buffer into
-// `dst`'s type and returns the number of bytes used and
-// the value of the buffer. If `data` is not either a
-// Pointer type, a Slice type or a Struct type, 0 and an error
-// message are returned. If `in` buffer can't be deserialized, 0 and
-// an error message are returned.
+// DeserializeRawToValue returns number of bytes used and an error if deserialization failed
 func DeserializeRawToValue(in []byte, dst reflect.Value) (int, error) {
 	var v reflect.Value
 	switch dst.Kind() {
@@ -294,12 +256,7 @@ func DeserializeRawToValue(in []byte, dst reflect.Value) (int, error) {
 	return inlen - len(d1.buf), err
 }
 
-// DeserializeToValue reads `dsize` bytes from `r`,
-// deserializes the resulting buffer into `dst`'s type and
-// returns the value of the buffer. If `data` is not either
-// a Pointer type, a Slice type or a Struct type, an error
-// message is returned. If `in` buffer can't be deserialized, an
-// error message is returned.
+// DeserializeToValue deserialize to value
 func DeserializeToValue(r io.Reader, dsize int, dst reflect.Value) error {
 
 	//fmt.Printf("*A1 v is type %s \n", data.Type().String() )		//this is the type of the value
@@ -326,8 +283,7 @@ func DeserializeToValue(r io.Reader, dsize int, dst reflect.Value) error {
 	return d1.value(v)
 }
 
-// SerializeAtomic returns serialization of `data`
-// parameter. If `data` is not an atomic type, panic message is logged.
+// SerializeAtomic serializes int or other atomic
 func SerializeAtomic(data interface{}) []byte {
 	var b [8]byte
 	var bs []byte
@@ -400,14 +356,14 @@ func SerializeAtomic(data interface{}) []byte {
 	return bs
 }
 
-// Serialize returns serialized basic type-based `data`
-// parameter. Encoding is reflect-based.
+// Serialize serialize struct
 func Serialize(data interface{}) []byte {
 	// Fast path for basic types.
 	// Fallback to reflect-based encoding.
 	v := reflect.Indirect(reflect.ValueOf(data))
 	size, err := datasizeWrite(v)
 	if err != nil {
+		//return nil, errors.New("binary.Write: " + err.Error())
 		log.Panic(err)
 	}
 	buf := make([]byte, size)
@@ -416,10 +372,8 @@ func Serialize(data interface{}) []byte {
 	return buf
 }
 
-// Size returns how many bytes would it take to encode the
-// value v, which must be a fixed-size value (struct) or a
-// slice of fixed-size values, or a pointer to such data.
-// Reflect-based encoding is used.
+// Size returns how many bytes Write would generate to encode the value v, which
+// must be a fixed-size value or a slice of fixed-size values, or a pointer to such data.
 func Size(v interface{}) int {
 	n, err := datasizeWrite(reflect.Indirect(reflect.ValueOf(v)))
 	if err != nil {
@@ -428,35 +382,20 @@ func Size(v interface{}) int {
 	return n
 }
 
-// isEmpty returns true if a value is "empty".
-// Only supports Slice, Map and String.
-// All other values are never considered empty.
-func isEmpty(v reflect.Value) bool {
-	t := v.Type()
-	switch t.Kind() {
-	case reflect.String:
-		return v.Len() == 0
-	case reflect.Map:
-		return v.IsNil() || v.Len() == 0
-	case reflect.Slice:
-		return v.IsNil() || v.Len() == 0
-	default:
-		return false
-	}
-}
-
-// datasizeWrite returns the number of bytes the actual data represented by v occupies in memory.
+// dataSize returns the number of bytes the actual data represented by v occupies in memory.
 // For compound structures, it sums the sizes of the elements. Thus, for instance, for a slice
 // it returns the length of the slice times the element size and does not count the memory
 // occupied by the header.
+
+/* Datasize needs to write variable length slice fields */
+/* Datasize for serialization is different than for serialization */
 func datasizeWrite(v reflect.Value) (int, error) {
 	t := v.Type()
 	switch t.Kind() {
 	case reflect.Interface:
+		//fmt.Println(v.Elem())
 		return datasizeWrite(v.Elem())
-
 	case reflect.Array:
-		// Arrays are a fixed size, so the length is not written
 		size := 0
 		for i := 0; i < v.Len(); i++ {
 			elem := v.Index(i)
@@ -500,36 +439,20 @@ func datasizeWrite(v reflect.Value) (int, error) {
 
 	case reflect.Struct:
 		sum := 0
-		nFields := t.NumField()
-		for i, n := 0, nFields; i < n; i++ {
-			ff := t.Field(i)
-			// Skip unexported fields
-			if ff.PkgPath != "" {
-				continue
-			}
-
-			tag, omitempty := ParseTag(ff.Tag.Get("enc"))
-
-			if omitempty && i != nFields-1 {
-				log.Panic(ErrInvalidOmitEmpty)
-			}
-
-			if tag != "-" {
-				fv := v.Field(i)
-				if !omitempty || !isEmpty(fv) {
-					s, err := datasizeWrite(fv)
-					if err != nil {
-						return 0, err
-					}
-					sum += s
+		for i, n := 0, t.NumField(); i < n; i++ {
+			f := t.Field(i)
+			if f.Tag.Get("enc") != "-" {
+				s, err := datasizeWrite(v.Field(i))
+				if err != nil {
+					return 0, err
 				}
+				sum += s
 			}
 		}
 		return sum, nil
 
 	case reflect.Bool:
 		return 1, nil
-
 	case reflect.String:
 		return len(v.String()) + 4, nil
 
@@ -541,19 +464,6 @@ func datasizeWrite(v reflect.Value) (int, error) {
 	default:
 		return 0, errors.New("invalid type " + t.String())
 	}
-}
-
-// ParseTag to extract encoder args from raw string
-func ParseTag(tag string) (string, bool) {
-	tagSplit := strings.Split(tag, ",")
-	name := tagSplit[0]
-
-	omitempty := false
-	if len(tagSplit) > 1 && tagSplit[1] == "omitempty" {
-		omitempty = true
-	}
-
-	return name, omitempty
 }
 
 /*
@@ -595,7 +505,7 @@ func lePutUint64(b []byte, v uint64) {
 }
 
 type coder struct {
-	buf []byte //nolint: structcheck
+	buf []byte
 }
 
 type decoder coder
@@ -718,7 +628,17 @@ func (d *decoder) value(v reflect.Value) error {
 	switch kind {
 
 	case reflect.Array:
-		// Arrays are a fixed size, so the length is not written
+		//if len(d.buf) < 4 {
+		//    return errors.New("Not enough buffer data to deserialize length")
+		//}
+		//length := int(d.uint32())
+		//if length < 0 || length > len(d.buf) {
+		//    return fmt.Errorf("Invalid length: %d", length)
+		//}
+		//if length != v.Len() {
+		//    return errors.New("Incomplete fixed length array received")
+		//}
+
 		for i := 0; i < v.Len(); i++ {
 			if err := d.value(v.Index(i)); err != nil {
 				return err
@@ -727,7 +647,7 @@ func (d *decoder) value(v reflect.Value) error {
 
 	case reflect.Map:
 		if len(d.buf) < 4 {
-			return ErrBufferUnderflow
+			return errors.New("Not enough buffer data to deserialize length")
 		}
 		length := int(d.uint32())
 		if length < 0 || length > len(d.buf) {
@@ -753,7 +673,7 @@ func (d *decoder) value(v reflect.Value) error {
 
 	case reflect.Slice:
 		if len(d.buf) < 4 {
-			return ErrBufferUnderflow
+			return errors.New("Not enough buffer data to deserialize length")
 		}
 		length := int(d.uint32())
 		if length < 0 || length > len(d.buf) {
@@ -775,28 +695,13 @@ func (d *decoder) value(v reflect.Value) error {
 
 	case reflect.Struct:
 		t := v.Type()
-		nFields := v.NumField()
-		for i := 0; i < nFields; i++ {
+		for i := 0; i < v.NumField(); i++ {
+			fv := v.Field(i)
 			ff := t.Field(i)
-			// Skip unexported fields
-			if ff.PkgPath != "" {
-				continue
-			}
-
-			tag, omitempty := ParseTag(ff.Tag.Get("enc"))
-
-			if omitempty && i != nFields-1 {
-				log.Panic(ErrInvalidOmitEmpty)
-			}
-
-			if tag != "-" {
-				fv := v.Field(i)
+			if ff.Tag.Get("enc") != "-" {
 				if fv.CanSet() && ff.Name != "_" {
 					if err := d.value(fv); err != nil {
-						// omitempty fields at the end of the buffer are ignored
-						if !(omitempty && len(d.buf) == 0) {
-							return err
-						}
+						return err
 					}
 				} else {
 					//dont decode anything
@@ -807,7 +712,7 @@ func (d *decoder) value(v reflect.Value) error {
 
 	case reflect.String:
 		if len(d.buf) < 4 {
-			return ErrBufferUnderflow
+			return errors.New("Not enough buffer data to deserialize length")
 		}
 		length := int(d.uint32())
 		if length < 0 || length > len(d.buf) {
@@ -848,6 +753,16 @@ func (d *decoder) value(v reflect.Value) error {
 	return nil
 }
 
+func (d *decoder) cmp(n int, m int) int {
+	if n != 0 {
+		return -1
+	}
+	if m != 0 {
+		return -1
+	}
+	return 0
+}
+
 //advance, returns -1 on failure
 //returns 0 on success
 func (d *decoder) adv(n int) int {
@@ -866,13 +781,13 @@ func (d *decoder) dchk(v reflect.Value) int {
 	switch kind {
 
 	case reflect.Array:
-		// Arrays are a fixed size, so the length is not written
+		c := 0
 		for i := 0; i < v.Len(); i++ {
-			if d.dchk(v.Index(i)) < 0 {
-				return -1
-			}
+			//t := d.dchk(v.Index(i))
+			//c += t
+			c = d.cmp(c, d.dchk(v.Index(i)))
 		}
-		return 0
+		return c
 
 	case reflect.Map:
 		if len(d.buf) < 4 {
@@ -880,97 +795,84 @@ func (d *decoder) dchk(v reflect.Value) int {
 		}
 
 		length := int(leUint32(d.buf[0:4]))
-		if d.adv(4) < 0 {
-			return -1
-		}
+		d.adv(4) //must succeed
 
 		key := v.Type().Key()
 		elem := v.Type().Elem()
 
+		c := 0
 		for i := 0; i < length; i++ {
 			keyv := reflect.Indirect(reflect.New(key))
 			elemv := reflect.Indirect(reflect.New(elem))
 
-			if d.dchk(keyv) < 0 {
-				return -1
-			}
+			c = d.cmp(c, d.dchk(keyv))
+			c = d.cmp(c, d.dchk(elemv))
+			//c += d.adv(d.dchk(elemv))
 
-			if d.dchk(elemv) < 0 {
-				return -1
-			}
+			//t := d.dchk(elemv)
+			//d.buf = d.buf[t:]
+			//c += t
+
+			//v.Set(reflect.Append(v, elemv))
 		}
-		return 0
+		return c
 	case reflect.Slice:
 		if len(d.buf) < 4 {
-			return -1
+			return -1 //error
 		}
 
 		length := int(leUint32(d.buf[0:4]))
-		if d.adv(4) < 0 {
-			return -1
-		}
+		d.adv(4) //must succeed
 
 		if length < 0 || length > len(d.buf) {
-			return -1
+			return -1 //error
 		}
 
 		elem := v.Type().Elem()
 		if elem.Kind() == reflect.Uint8 {
-			return d.adv(length)
+			return d.cmp(0, d.adv(length)) //already advanced 4
 		}
 
+		c := 0
 		for i := 0; i < length; i++ {
 			elemv := reflect.Indirect(reflect.New(elem))
 
-			if d.dchk(elemv) < 0 {
-				return -1
-			}
+			c = d.cmp(c, d.dchk(elemv))
+			//c += d.adv(d.dchk(elemv))
+
+			//t := d.dchk(elemv)
+			//d.buf = d.buf[t:]
+			//c += t
+
+			//v.Set(reflect.Append(v, elemv))
 		}
-		return 0
+		return c
 
 	case reflect.Struct:
 		t := v.Type()
-		nFields := v.NumField()
-		for i := 0; i < nFields; i++ {
+		c := 0
+		for i := 0; i < v.NumField(); i++ {
+			fv := v.Field(i)
 			ff := t.Field(i)
-			// Skip unexported fields
-			if ff.PkgPath != "" {
-				continue
-			}
-
-			tag, omitempty := ParseTag(ff.Tag.Get("enc"))
-
-			if omitempty && i != nFields-1 {
-				log.Panic(ErrInvalidOmitEmpty)
-			}
-
-			if tag != "-" {
-				fv := v.Field(i)
-				if !omitempty && fv.CanSet() && ff.Name != "_" {
-					if d.dchk(fv) < 0 {
-						return -1
-					}
+			if ff.Tag.Get("enc") != "-" {
+				if fv.CanSet() && ff.Name != "_" {
+					//c += d.adv(d.dchk(fv))
+					//c += d.dchk(fv)
+					c = d.cmp(c, d.dchk(fv))
 				} else {
 					//dont try to decode anything
 					//d.skip(fv) //BUG!?
 				}
 			}
 		}
-		return 0
+		return c
 
 	case reflect.Bool:
 		return d.adv(1)
 	case reflect.String:
-		if len(d.buf) < 4 {
-			return -1
-		}
-
 		length := int(leUint32(d.buf[0:4]))
-		if d.adv(4) < 0 {
-			return -1
-		}
-
-		return d.adv(length)
+		d.adv(4) //must succeed
+		return d.cmp(0, d.adv(length))
 	case reflect.Int8:
 		return d.adv(1)
 	case reflect.Int16:
@@ -1008,8 +910,8 @@ func (e *encoder) value(v reflect.Value) {
 	case reflect.Interface:
 		e.value(v.Elem())
 
-	case reflect.Array:
-		// Arrays are a fixed size, so the length is not written
+	case reflect.Array: //fixed size
+		//e.uint32(uint32(v.Len()))
 		for i := 0; i < v.Len(); i++ {
 			e.value(v.Index(i))
 		}
@@ -1029,31 +931,43 @@ func (e *encoder) value(v reflect.Value) {
 
 	case reflect.Struct:
 		t := v.Type()
-		nFields := v.NumField()
-		for i := 0; i < nFields; i++ {
+		for i := 0; i < v.NumField(); i++ {
 			// see comment for corresponding code in decoder.value()
-			ff := t.Field(i)
-			// Skip unexported fields
-			if ff.PkgPath != "" {
-				continue
-			}
-
-			tag, omitempty := ParseTag(ff.Tag.Get("enc"))
-
-			if omitempty && i != nFields-1 {
-				log.Panic(ErrInvalidOmitEmpty)
-			}
-
-			if tag != "-" {
-				fv := v.Field(i)
-				if !(omitempty && isEmpty(fv)) && (fv.CanSet() || ff.Name != "_") {
-					e.value(fv)
+			v := v.Field(i)
+			f := t.Field(i)
+			if f.Tag.Get("enc") != "-" {
+				if v.CanSet() || f.Name != "_" {
+					e.value(v)
 				} else {
 					//dont write anything
 					//e.skip(v)
 				}
 			}
 		}
+
+	// case reflect.Slice:
+	//     t := v.Type() //type of the value
+
+	//     //handle byte array
+	//     if t.Elem().Kind() == reflect.Uint8 {
+	//         b := v.Bytes()
+	//         n := len(b)
+	//         e.uint32(uint32(n))
+	//         for i := 0; i < n; i++ {
+	//             e.buf[i] = b[i]
+	//         }   //memcpy
+	//         e.buf = e.buf[n:] //advance slice n bytes
+	//     } else { //handle struct array
+	//         s := int(t.Elem().Size())
+	//         if s <= 1 {
+	//             log.Panic()
+	//         }
+	//         n := v.Len()            //const
+	//         e.uint32(uint32(n * s)) //push number of bytes
+	//         for i := 0; i < n; i++ {
+	//             e.value(v.Index(i))
+	//         }
+	//     }
 
 	case reflect.Bool:
 		e.bool(v.Bool())

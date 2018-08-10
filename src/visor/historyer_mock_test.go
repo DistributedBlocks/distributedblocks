@@ -12,21 +12,20 @@ import (
 
 	cipher "github.com/skycoin/skycoin/src/cipher"
 	coin "github.com/skycoin/skycoin/src/coin"
-	dbutil "github.com/skycoin/skycoin/src/visor/dbutil"
 	historydb "github.com/skycoin/skycoin/src/visor/historydb"
 )
 
-// HistoryerMock mock
-type HistoryerMock struct {
+// historyerMock mock
+type historyerMock struct {
 	mock.Mock
 }
 
-func NewHistoryerMock() *HistoryerMock {
-	return &HistoryerMock{}
+func newHistoryerMock() *historyerMock {
+	return &historyerMock{}
 }
 
-// Erase mocked method
-func (m *HistoryerMock) Erase(p0 *dbutil.Tx) error {
+// ForEach mocked method
+func (m *historyerMock) ForEach(p0 func(tx *historydb.Transaction) error) error {
 
 	ret := m.Called(p0)
 
@@ -43,55 +42,10 @@ func (m *HistoryerMock) Erase(p0 *dbutil.Tx) error {
 
 }
 
-// ForEachTxn mocked method
-func (m *HistoryerMock) ForEachTxn(p0 *dbutil.Tx, p1 func(cipher.SHA256, *historydb.Transaction) error) error {
+// GetAddrTxns mocked method
+func (m *historyerMock) GetAddrTxns(p0 cipher.Address) ([]historydb.Transaction, error) {
 
-	ret := m.Called(p0, p1)
-
-	var r0 error
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case error:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0
-
-}
-
-// GetAddrUxOuts mocked method
-func (m *HistoryerMock) GetAddrUxOuts(p0 *dbutil.Tx, p1 cipher.Address) ([]*historydb.UxOut, error) {
-
-	ret := m.Called(p0, p1)
-
-	var r0 []*historydb.UxOut
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case []*historydb.UxOut:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// GetAddressTxns mocked method
-func (m *HistoryerMock) GetAddressTxns(p0 *dbutil.Tx, p1 cipher.Address) ([]historydb.Transaction, error) {
-
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 []historydb.Transaction
 	switch res := ret.Get(0).(type) {
@@ -115,37 +69,10 @@ func (m *HistoryerMock) GetAddressTxns(p0 *dbutil.Tx, p1 cipher.Address) ([]hist
 
 }
 
-// GetTransaction mocked method
-func (m *HistoryerMock) GetTransaction(p0 *dbutil.Tx, p1 cipher.SHA256) (*historydb.Transaction, error) {
+// GetAddrUxOuts mocked method
+func (m *historyerMock) GetAddrUxOuts(p0 cipher.Address) ([]*historydb.UxOut, error) {
 
-	ret := m.Called(p0, p1)
-
-	var r0 *historydb.Transaction
-	switch res := ret.Get(0).(type) {
-	case nil:
-	case *historydb.Transaction:
-		r0 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	var r1 error
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case error:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
-
-	return r0, r1
-
-}
-
-// GetUxOuts mocked method
-func (m *HistoryerMock) GetUxOuts(p0 *dbutil.Tx, p1 []cipher.SHA256) ([]*historydb.UxOut, error) {
-
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 []*historydb.UxOut
 	switch res := ret.Get(0).(type) {
@@ -169,15 +96,42 @@ func (m *HistoryerMock) GetUxOuts(p0 *dbutil.Tx, p1 []cipher.SHA256) ([]*history
 
 }
 
-// NeedsReset mocked method
-func (m *HistoryerMock) NeedsReset(p0 *dbutil.Tx) (bool, error) {
+// GetTransaction mocked method
+func (m *historyerMock) GetTransaction(p0 cipher.SHA256) (*historydb.Transaction, error) {
 
 	ret := m.Called(p0)
 
-	var r0 bool
+	var r0 *historydb.Transaction
 	switch res := ret.Get(0).(type) {
 	case nil:
-	case bool:
+	case *historydb.Transaction:
+		r0 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	var r1 error
+	switch res := ret.Get(1).(type) {
+	case nil:
+	case error:
+		r1 = res
+	default:
+		panic(fmt.Sprintf("unexpected type: %v", res))
+	}
+
+	return r0, r1
+
+}
+
+// GetUxout mocked method
+func (m *historyerMock) GetUxout(p0 cipher.SHA256) (*historydb.UxOut, error) {
+
+	ret := m.Called(p0)
+
+	var r0 *historydb.UxOut
+	switch res := ret.Get(0).(type) {
+	case nil:
+	case *historydb.UxOut:
 		r0 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
@@ -197,9 +151,9 @@ func (m *HistoryerMock) NeedsReset(p0 *dbutil.Tx) (bool, error) {
 }
 
 // ParseBlock mocked method
-func (m *HistoryerMock) ParseBlock(p0 *dbutil.Tx, p1 coin.Block) error {
+func (m *historyerMock) ParseBlock(p0 *coin.Block) error {
 
-	ret := m.Called(p0, p1)
+	ret := m.Called(p0)
 
 	var r0 error
 	switch res := ret.Get(0).(type) {
@@ -214,38 +168,38 @@ func (m *HistoryerMock) ParseBlock(p0 *dbutil.Tx, p1 coin.Block) error {
 
 }
 
-// ParsedBlockSeq mocked method
-func (m *HistoryerMock) ParsedBlockSeq(p0 *dbutil.Tx) (uint64, bool, error) {
+// ParsedHeight mocked method
+func (m *historyerMock) ParsedHeight() int64 {
 
-	ret := m.Called(p0)
+	ret := m.Called()
 
-	var r0 uint64
+	var r0 int64
 	switch res := ret.Get(0).(type) {
 	case nil:
-	case uint64:
+	case int64:
 		r0 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
-	var r1 bool
-	switch res := ret.Get(1).(type) {
-	case nil:
-	case bool:
-		r1 = res
-	default:
-		panic(fmt.Sprintf("unexpected type: %v", res))
-	}
+	return r0
 
-	var r2 error
-	switch res := ret.Get(2).(type) {
+}
+
+// ResetIfNeed mocked method
+func (m *historyerMock) ResetIfNeed() error {
+
+	ret := m.Called()
+
+	var r0 error
+	switch res := ret.Get(0).(type) {
 	case nil:
 	case error:
-		r2 = res
+		r0 = res
 	default:
 		panic(fmt.Sprintf("unexpected type: %v", res))
 	}
 
-	return r0, r1, r2
+	return r0
 
 }

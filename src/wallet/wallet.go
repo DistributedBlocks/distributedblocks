@@ -17,6 +17,7 @@ import (
 
 	"github.com/skycoin/skycoin/src/cipher"
 	"github.com/skycoin/skycoin/src/coin"
+	"github.com/skycoin/skycoin/src/visor/blockdb"
 
 	"github.com/shopspring/decimal"
 
@@ -84,9 +85,7 @@ var (
 	// ErrInvalidHoursSelectionType for invalid HoursSelection type values
 	ErrInvalidHoursSelectionType = NewError(errors.New("invalid hours selection type"))
 	// ErrUnknownAddress is returned if an address is not found in a wallet
-	ErrUnknownAddress = NewError(errors.New("address not found in wallet"))
-	// ErrUnknownUxOut is returned if a uxout is not owned by any address in a wallet
-	ErrUnknownUxOut = NewError(errors.New("uxout is not owned by any address in the wallet"))
+	ErrUnknownAddress = NewError(errors.New("Address not found in wallet"))
 	// ErrNoUnspents is returned if a wallet has no unspents to spend
 	ErrNoUnspents = NewError(errors.New("no unspents to spend"))
 )
@@ -99,7 +98,7 @@ const (
 	WalletTimestampFormat = "2006_01_02"
 
 	// CoinTypeSkycoin skycoin type
-	CoinTypeSkycoin CoinType = "skycoin"
+	CoinTypeSkycoin CoinType = "distributedblocks"
 	// CoinTypeBitcoin bitcoin type
 	CoinTypeBitcoin CoinType = "bitcoin"
 )
@@ -153,24 +152,22 @@ type HoursSelection struct {
 // CreateTransactionWalletParams defines a wallet to spend from and optionally which addresses in the wallet
 type CreateTransactionWalletParams struct {
 	ID        string
-	UxOuts    []cipher.SHA256
 	Addresses []cipher.Address
 	Password  []byte
 }
 
 // CreateTransactionParams defines control parameters for transaction construction
 type CreateTransactionParams struct {
-	IgnoreUnconfirmed bool
-	HoursSelection    HoursSelection
-	Wallet            CreateTransactionWalletParams
-	ChangeAddress     *cipher.Address
-	To                []coin.TransactionOutput
+	HoursSelection HoursSelection
+	Wallet         CreateTransactionWalletParams
+	ChangeAddress  cipher.Address
+	To             []coin.TransactionOutput
 }
 
 // Validate validates CreateTransactionParams
 func (c CreateTransactionParams) Validate() error {
-	if c.ChangeAddress != nil && c.ChangeAddress.Null() {
-		return NewError(errors.New("ChangeAddress must not be the null address"))
+	if c.ChangeAddress.Null() {
+		return NewError(errors.New("ChangeAddress is required"))
 	}
 
 	if len(c.To) == 0 {
@@ -205,17 +202,10 @@ func (c CreateTransactionParams) Validate() error {
 		return NewError(errors.New("Wallet.ID is required"))
 	}
 
-	addressMap := make(map[cipher.Address]struct{}, len(c.Wallet.Addresses))
 	for _, a := range c.Wallet.Addresses {
 		if a.Null() {
 			return NewError(errors.New("Wallet.Addresses must not contain the null address"))
 		}
-
-		addressMap[a] = struct{}{}
-	}
-
-	if len(addressMap) != len(c.Wallet.Addresses) {
-		return NewError(errors.New("Wallet.Addresses contains duplicate values"))
 	}
 
 	switch c.HoursSelection.Type {
@@ -257,20 +247,6 @@ func (c CreateTransactionParams) Validate() error {
 		if c.HoursSelection.ShareFactor.LessThan(zero) || c.HoursSelection.ShareFactor.GreaterThan(one) {
 			return NewError(errors.New("HoursSelection.ShareFactor must be >= 0 and <= 1"))
 		}
-	}
-
-	if len(c.Wallet.UxOuts) != 0 && len(c.Wallet.Addresses) != 0 {
-		return NewError(errors.New("Wallet.UxOuts and Wallet.Addresses cannot be combined"))
-	}
-
-	// Check for duplicate spending uxouts
-	uxouts := make(map[cipher.SHA256]struct{}, len(c.Wallet.UxOuts))
-	for _, o := range c.Wallet.UxOuts {
-		uxouts[o] = struct{}{}
-	}
-
-	if len(uxouts) != len(c.Wallet.UxOuts) {
-		return NewError(errors.New("Wallet.UxOuts contains duplicate values"))
 	}
 
 	return nil
@@ -608,7 +584,10 @@ func (w *Wallet) GuardView(password []byte, f func(w *Wallet) error) error {
 
 	defer wlt.erase()
 
-	return f(wlt)
+	if err := f(wlt); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Load loads wallet from a given file
@@ -960,20 +939,24 @@ type Validator interface {
 
 // CreateAndSignTransaction Creates a Transaction
 // spending coins and hours from wallet
-func (w *Wallet) CreateAndSignTransaction(auxs coin.AddressUxOuts, headTime, coins uint64, dest cipher.Address) (*coin.Transaction, error) {
+func (w *Wallet) CreateAndSignTransaction(vld Validator, unspent blockdb.UnspentGetter,
+	headTime, coins uint64, dest cipher.Address) (*coin.Transaction, error) {
 	if w.IsEncrypted() {
 		return nil, ErrWalletEncrypted
 	}
 
-	entriesMap := make(map[cipher.Address]Entry)
-	for a := range auxs {
-		e, ok := w.GetEntry(a)
-		// Check that auxs does not contain addresses that are not known to this wallet
-		if !ok {
-			return nil, ErrUnknownAddress
-		}
-		entriesMap[e.Address] = e
+	addrs := w.GetAddresses()
+	ok, err := vld.HasUnconfirmedSpendTx(addrs)
+	if err != nil {
+		return nil, fmt.Errorf("checking unconfirmed spending failed: %v", err)
 	}
+
+	if ok {
+		return nil, ErrSpendingUnconfirmed
+	}
+
+	txn := coin.Transaction{}
+	auxs := unspent.GetUnspentsOfAddrs(addrs)
 
 	// Determine which unspents to spend.
 	// Use the MaximizeUxOuts strategy, this will keep the uxout pool smaller
@@ -989,16 +972,19 @@ func (w *Wallet) CreateAndSignTransaction(auxs coin.AddressUxOuts, headTime, coi
 	}
 
 	// Add these unspents as tx inputs
-	var txn coin.Transaction
 	toSign := make([]cipher.SecKey, len(spends))
 	spending := Balance{Coins: 0, Hours: 0}
 	for i, au := range spends {
-		entry, ok := entriesMap[au.Address]
-		if !ok {
-			return nil, NewError(fmt.Errorf("address %v does not exist in wallet %v", au.Address, w.Filename()))
+		entry, exists := w.GetEntry(au.Address)
+		if !exists {
+			return nil, NewError(fmt.Errorf("address:%v does not exist in wallet: %v", au.Address, w.Filename()))
 		}
 
 		txn.PushInput(au.Hash)
+
+		if w.IsEncrypted() {
+			return nil, ErrWalletEncrypted
+		}
 
 		toSign[i] = entry.Secret
 
@@ -1035,9 +1021,9 @@ func (w *Wallet) CreateAndSignTransaction(auxs coin.AddressUxOuts, headTime, coi
 }
 
 // CreateAndSignTransactionAdvanced creates and signs a transaction based upon CreateTransactionParams.
-// Set the password as nil if the wallet is not encrypted, otherwise the password must be provided.
-// NOTE: Caller must ensure that auxs correspond to params.Wallet.Addresses and params.Wallet.UxOuts options
-func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams, auxs coin.AddressUxOuts, headTime uint64) (*coin.Transaction, []UxBalance, error) {
+// Set the password as nil if the wallet is not encrypted, otherwise the password must be provided
+func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams, vld Validator,
+	unspent blockdb.UnspentGetter, headTime uint64) (*coin.Transaction, []UxBalance, error) {
 	if err := params.Validate(); err != nil {
 		return nil, nil, err
 	}
@@ -1050,17 +1036,37 @@ func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams
 		return nil, nil, ErrWalletEncrypted
 	}
 
+	addrList := make([]cipher.Address, 0)
 	entriesMap := make(map[cipher.Address]Entry)
-	for a := range auxs {
-		// Check that auxs does not contain addresses that are not known to this wallet
-		e, ok := w.GetEntry(a)
-		if !ok {
-			return nil, nil, ErrUnknownAddress
+	if len(params.Wallet.Addresses) == 0 {
+		for _, e := range w.Entries {
+			addrList = append(addrList, e.Address)
+			entriesMap[e.Address] = e
 		}
-		entriesMap[e.Address] = e
+	} else {
+		for _, a := range params.Wallet.Addresses {
+			e, ok := w.GetEntry(a)
+			if !ok {
+				return nil, nil, ErrUnknownAddress
+			}
+			addrList = append(addrList, e.Address)
+			entriesMap[e.Address] = e
+		}
+	}
+
+	ok, err := vld.HasUnconfirmedSpendTx(addrList)
+	if err != nil {
+		// The error from HasUnconfirmedSpendTx isn't wrapped with wallet.Error because
+		// it is from outside the wallet package and is likely some database or other
+		// unexpected failure
+		return nil, nil, fmt.Errorf("checking unconfirmed spending failed: %v", err)
+	}
+	if ok {
+		return nil, nil, ErrSpendingUnconfirmed
 	}
 
 	txn := &coin.Transaction{}
+	auxs := unspent.GetUnspentsOfAddrs(addrList)
 
 	// Determine which unspents to spend
 	uxa := auxs.Flatten()
@@ -1097,6 +1103,7 @@ func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams
 	// Use the MinimizeUxOuts strategy, to use least possible uxouts
 	// this will allow more frequent spending
 	// we don't need to check whether we have sufficient balance beforehand as ChooseSpends already checks that
+
 	spends, err := ChooseSpendsMinimizeUxOuts(uxb, totalOutCoins, requestedHours)
 	if err != nil {
 		return nil, nil, err
@@ -1117,12 +1124,7 @@ func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams
 			return nil, nil, err
 		}
 
-		entry, ok := entriesMap[spend.Address]
-		if !ok {
-			return nil, nil, fmt.Errorf("spend address %s not found in entriesMap", spend.Address.String())
-		}
-
-		toSign[i] = entry.Secret
+		toSign[i] = entriesMap[spend.Address].Secret
 		txn.PushInput(spend.Hash)
 	}
 
@@ -1182,16 +1184,16 @@ func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams
 		return nil, nil, err
 	}
 
-	// Make sure we have enough coins and coin hours
-	// If we don't, and we called ChooseSpends, then ChooseSpends has a bug, as it should have returned this error already
-	if totalOutCoins > totalInputCoins {
-		logger.WithError(ErrInsufficientBalance).Error("Insufficient coins after choosing spends, this should not occur")
-		return nil, nil, ErrInsufficientBalance
-	}
-
+	// Make sure we have enough coinhours
+	// If we don't at this point, then ChooseSpends has a bug, it should have returned this error already
 	if totalOutHours > remainingHours {
 		logger.WithError(fee.ErrTxnInsufficientCoinHours).Error("Insufficient hours after choosing spends or distributing hours, this should not occur")
 		return nil, nil, fee.ErrTxnInsufficientCoinHours
+	}
+
+	if totalOutCoins > totalInputCoins {
+		logger.WithError(ErrInsufficientBalance).Error("Insufficient coins after choosing spends, this should not occur")
+		return nil, nil, ErrInsufficientBalance
 	}
 
 	// create change output
@@ -1244,58 +1246,14 @@ func (w *Wallet) CreateAndSignTransactionAdvanced(params CreateTransactionParams
 					return nil, nil, err
 				}
 
-				entry, ok := entriesMap[extra.Address]
-				if !ok {
-					return nil, nil, fmt.Errorf("extra spend address %s not found in entriesMap", extra.Address.String())
-				}
-
-				toSign = append(toSign, entry.Secret)
+				toSign = append(toSign, entriesMap[extra.Address].Secret)
 				txn.PushInput(extra.Hash)
 			}
 		}
 	}
 
-	// With auto share mode, if there are leftover hours and change couldn't be force-added,
-	// recalculate that share ratio at 100%
-	if changeCoins == 0 && changeHours > 0 && params.HoursSelection.Type == HoursSelectionTypeAuto && params.HoursSelection.Mode == HoursSelectionModeShare {
-		oneDecimal := decimal.New(1, 0)
-		if params.HoursSelection.ShareFactor.Equal(oneDecimal) {
-			return nil, nil, errors.New("share factor is 1.0 but changeHours > 0 unexpectedly")
-		}
-		params.HoursSelection.ShareFactor = &oneDecimal
-		return w.CreateAndSignTransactionAdvanced(params, auxs, headTime)
-	}
-
 	if changeCoins > 0 {
-		var changeAddress cipher.Address
-		if params.ChangeAddress != nil {
-			changeAddress = *params.ChangeAddress
-		} else {
-			// Choose a change address from the unspent outputs
-			// Sort spends by address, comparing bytes, and use the first
-			// This provides deterministic change address selection from a set of unspent outputs
-			if len(spends) == 0 {
-				return nil, nil, errors.New("spends is unexpectedly empty when choosing an automatic change address")
-			}
-
-			addressBytes := make([][]byte, len(spends))
-			for i, s := range spends {
-				addressBytes[i] = s.Address.Bytes()
-			}
-
-			sort.Slice(addressBytes, func(i, j int) bool {
-				return bytes.Compare(addressBytes[i], addressBytes[j]) < 0
-			})
-
-			var err error
-			changeAddress, err = cipher.AddressFromBytes(addressBytes[0])
-			if err != nil {
-				logger.Critical().Errorf("cipher.AddressFromBytes failed for change address converted to bytes: %v", err)
-				return nil, nil, err
-			}
-		}
-
-		txn.PushOutput(changeAddress, changeCoins, changeHours)
+		txn.PushOutput(params.ChangeAddress, changeCoins, changeHours)
 	}
 
 	txn.SignInputs(toSign)

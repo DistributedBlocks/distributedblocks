@@ -1,4 +1,4 @@
-@import '../../../../../theme/variables';
+@import '../../../../../theme/_variables';
 
 .-header {
   color: $white;
@@ -23,7 +23,6 @@
 .-buttons-footer {
   align-items: center;
   flex-flow: column;
-  margin-bottom: 20px;
 }
 
 .-check-container {

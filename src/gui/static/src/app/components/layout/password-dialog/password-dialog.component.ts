@@ -1,42 +1,44 @@
 import { Component, Inject, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { MAT_DIALOG_DATA } from '@angular/material/dialog';
-import { MatDialogRef, MatSnackBar } from '@angular/material';
+import { MatDialogRef, MatSnackBar, MatSnackBarConfig } from '@angular/material';
 import { FormControl, FormGroup } from '@angular/forms';
 import { ButtonComponent } from '../button/button.component';
-import { parseResponseMessage, showSnackbarError } from '../../../utils/errors';
-import { Subject } from 'rxjs/Subject';
-import { ISubscription } from 'rxjs/Subscription';
-import { TranslateService } from '@ngx-translate/core';
+import { Observable } from 'rxjs/Observable';
+import { parseResponseMessage } from '../../../utils/index';
 
 @Component({
   selector: 'app-password-dialog',
   templateUrl: './password-dialog.component.html',
-  styleUrls: ['./password-dialog.component.scss'],
+  styleUrls: ['./password-dialog.component.scss']
 })
 export class PasswordDialogComponent implements OnInit, OnDestroy {
+
   @ViewChild('button') button: ButtonComponent;
   form: FormGroup;
-  passwordSubmit = new Subject<any>();
+  passwordSubmit: Observable<any>;
   disableDismiss = false;
-
-  private subscriptions: ISubscription[] = [];
-  private errors: any;
+  private passwordChanged;
 
   constructor(
-    @Inject(MAT_DIALOG_DATA) public data: any,
     public dialogRef: MatDialogRef<PasswordDialogComponent>,
+    @Inject(MAT_DIALOG_DATA) public data: any,
     private snackbar: MatSnackBar,
-    private translateService: TranslateService,
   ) {
+    this.passwordSubmit = Observable.create(observer => {
+      this.passwordChanged = password => {
+        observer.next({
+          password,
+          close: this.close.bind(this),
+          error: this.error.bind(this),
+        });
+      };
+    });
+
     this.data = Object.assign({
       confirm: false,
       description: null,
       title: null,
     }, data || {});
-
-    this.translateService.get(['errors.incorrect-password', 'errors.api-disabled', 'errors.no-wallet']).subscribe(res => {
-      this.errors = res;
-    });
   }
 
   ngOnInit() {
@@ -45,11 +47,11 @@ export class PasswordDialogComponent implements OnInit, OnDestroy {
     this.form.addControl('confirm_password', new FormControl(''));
 
     ['password', 'confirm_password'].forEach(control => {
-      this.subscriptions.push(this.form.get(control).valueChanges.subscribe(() => {
+      this.form.get(control).valueChanges.subscribe(() => {
         if (this.button.state === 2) {
           this.button.resetState();
         }
-      }));
+      });
     });
 
     if (this.data.confirm) {
@@ -66,10 +68,6 @@ export class PasswordDialogComponent implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.form.get('password').setValue('');
     this.form.get('confirm_password').setValue('');
-
-    this.passwordSubmit.complete();
-
-    this.subscriptions.forEach(sub => sub.unsubscribe());
   }
 
   proceed() {
@@ -78,13 +76,8 @@ export class PasswordDialogComponent implements OnInit, OnDestroy {
     }
 
     this.button.setLoading();
+    this.passwordChanged(this.form.get('password').value);
     this.disableDismiss = true;
-
-    this.passwordSubmit.next({
-      password: this.form.get('password').value,
-      close: this.close.bind(this),
-      error: this.error.bind(this),
-    });
   }
 
   private validateForm() {
@@ -112,20 +105,22 @@ export class PasswordDialogComponent implements OnInit, OnDestroy {
           error = parseResponseMessage(error['_body']);
           break;
         case 401:
-          error = this.errors['errors.incorrect-password'];
+          error = 'Incorrect password';
           break;
         case 403:
-          error = this.errors['errors.api-disabled'];
+          error = 'API Disabled';
           break;
         case 404:
-          error = this.errors['errors.no-wallet'];
+          error = 'Wallet does not exist';
           break;
         default:
-          showSnackbarError(this.snackbar, error, 5000);
+          const config = new MatSnackBarConfig();
+          config.duration = 5000;
+          this.snackbar.open(parseResponseMessage(error['_body']), null, config);
       }
     }
 
-    this.button.setError(error ? error : this.errors['errors.incorrect-password']);
+    this.button.setError(error ? error : 'Incorrect password');
     this.disableDismiss = false;
   }
 }

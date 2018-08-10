@@ -24,25 +24,14 @@ export class TellerConfig {
 }
 
 export class Transaction {
-  balance: number;
-  inputs: any[];
-  outputs: any[];
-  txid: string;
-  hoursSent?: number;
-  hoursBurned?: number;
-}
-
-export class PreviewTransaction extends Transaction {
-  from: string;
-  to: string[];
-  encoded: string;
-}
-
-export class NormalTransaction extends Transaction {
   addresses: string[];
-  timestamp: number;
+  balance: number;
   block: number;
   confirmed: boolean;
+  inputs: any[];
+  outputs: any[];
+  timestamp: number;
+  txid: string;
 }
 
 export class Version {
@@ -58,13 +47,6 @@ export class Wallet {
   encrypted: boolean;
   hideEmpty?: boolean;
   opened?: boolean;
-}
-
-export class Connection {
-  id: number;
-  address: string;
-  listen_port: number;
-  source?: string;
 }
 
 /**

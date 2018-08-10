@@ -1,34 +1,49 @@
 @import '../../../../../theme/variables';
 
-.-text-right {
-  text-align: right;
-}
+.-wallet {
+  margin: 40px 20px 0;
 
-.-grey {
-  color: $grey;
-}
-
-.-row.-small {
-  height: $row-height / 1.5;
-  line-height: $row-height / 1.5;
-}
-
-.-hash {
-  margin-left: 27px;
-}
-
-.-address {
-  color: $grey;
-
-  img {
-    width: 17px;
-    vertical-align: middle;
-    margin-right: 10px;
+  h3 {
+    font-weight: 400;
   }
-}
 
-.-label {
-  text-overflow: ellipsis;
-  overflow: hidden;
-  white-space: nowrap;
+  .-address {
+    margin-bottom: 20px;
+
+    h4 {
+      margin: 0;
+
+      & + .-output {
+        margin-top: 15px;
+      }
+    }
+
+    .-output {
+      border-top: 1px solid #eee;
+      padding: 15px 0;
+      font-size: 14px;
+
+      &:last-child {
+        padding-bottom: 0;
+      }
+
+      .-hash {
+        margin-bottom: 10px;
+      }
+
+      .-balance {
+        display: flex;
+        flex-direction: row;
+
+        .-item {
+          min-width: 150px;
+          padding-right: 20px;
+
+          span {
+            color: $grey-dark;
+          }
+        }
+      }
+    }
+  }
 }
