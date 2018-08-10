@@ -27,12 +27,10 @@ type fakeGateway struct {
 	transactions         map[string]string
 	injectRawTxMap       map[string]bool // key: transaction hash, value indicates whether the injectTransaction should return error.
 	injectedTransactions map[string]string
-	addrRecvUxOuts       []*historydb.UxOut
-	addrSpentUxOUts      []*historydb.UxOut
 	uxouts               []coin.UxOut
 }
 
-func (fg fakeGateway) GetLastBlocks(num uint64) (*visor.ReadableBlocks, error) {
+func (fg fakeGateway) GetLastBlocks(num uint64) (*visor.ReadableBlocks, error) { // nolint: unparam
 	var blocks visor.ReadableBlocks
 	if err := json.Unmarshal([]byte(blockString), &blocks); err != nil {
 		return nil, err
